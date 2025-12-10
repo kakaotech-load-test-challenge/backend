@@ -15,6 +15,7 @@ import com.ktb.chatapp.service.*;
 import com.ktb.chatapp.util.BannedWordChecker;
 import com.ktb.chatapp.websocket.socketio.SocketUser;
 import com.ktb.chatapp.websocket.socketio.ai.AiService;
+
 import io.micrometer.core.instrument.*;
 import lombok.extern.slf4j.Slf4j;
 
@@ -50,9 +51,8 @@ public class ChatMessageHandler {
     private final Counter errorCounter;
     private final Timer timer;
 
-    // 30초 세션 검증 캐시
+    // 세션 검증 캐시
     private final ConcurrentHashMap<String, LocalDateTime> sessionValidationCache = new ConcurrentHashMap<>();
-
 
     public ChatMessageHandler(
             SessionService sessionService,
@@ -65,7 +65,6 @@ public class ChatMessageHandler {
             UserRepository userRepository,
             MeterRegistry registry
     ) {
-
         this.sessionService = sessionService;
         this.rateLimitService = rateLimitService;
         this.aiService = aiService;
@@ -82,26 +81,21 @@ public class ChatMessageHandler {
         this.timer = registry.timer("socketio.messages.time");
     }
 
-
     @OnEvent(CHAT_MESSAGE)
     public void handleChatMessage(SocketIOClient client, ChatMessageRequest data) {
 
         Timer.Sample sample = Timer.start(registry);
 
         try {
-            // 기본 요청 검증
             if (!validateRequest(client, data)) return;
 
             SocketUser socketUser = client.get("user");
             String userId = socketUser.id();
 
-            // 세션 검증 캐싱
             if (!validateSessionCached(userId, socketUser.authSessionId(), client)) return;
 
-            // Rate Limit
             if (!checkRateLimit(socketUser, client)) return;
 
-            // 사용자 조회
             User sender = userRepository.findById(userId).orElse(null);
             if (sender == null) {
                 sendError(client, "MESSAGE_ERROR", "사용자를 찾을 수 없습니다.");
@@ -109,14 +103,12 @@ public class ChatMessageHandler {
                 return;
             }
 
-            // 방 접근 권한 검증
             Room room = validateRoomAccess(data.getRoom(), userId, client);
             if (room == null) {
                 errorCounter.increment();
                 return;
             }
 
-            // 메시지 내용 파싱
             MessageContent content = data.getParsedContent();
             if (bannedWordChecker.containsBannedWord(content.getTrimmedContent())) {
                 sendError(client, "MESSAGE_REJECTED", "금칙어가 포함된 메시지는 전송할 수 없습니다.");
@@ -124,7 +116,6 @@ public class ChatMessageHandler {
                 return;
             }
 
-            // 저장
             Message saved = messageService.saveMessage(
                     data.getMessageType(),
                     data.getRoom(),
@@ -135,17 +126,12 @@ public class ChatMessageHandler {
 
             if (saved == null) return;
 
-            // 클라이언트 응답 변환
             MessageResponse response = messageService.toResponse(saved);
 
-            // 방 전체에 메시지 브로드캐스트
             socketIOServer.getRoomOperations(data.getRoom())
                     .sendEvent(MESSAGE, response);
 
-            // AI 멘션 비동기 처리
             asyncHandleAIMentions(data.getRoom(), userId, content);
-
-            // 활동시간 비동기 업데이트
             asyncUpdateLastActivity(userId);
 
             successCounter.increment();
@@ -159,7 +145,6 @@ public class ChatMessageHandler {
         }
     }
 
-    // 요청 검증
     private boolean validateRequest(SocketIOClient client, ChatMessageRequest data) {
         if (data == null) {
             sendError(client, "MESSAGE_ERROR", "메시지 데이터가 없습니다.");
@@ -172,9 +157,7 @@ public class ChatMessageHandler {
         return true;
     }
 
-    // 세션 검증 캐싱
     private boolean validateSessionCached(String userId, String sessionId, SocketIOClient client) {
-
         LocalDateTime lastValidated = sessionValidationCache.get(userId);
 
         if (lastValidated != null &&
@@ -193,7 +176,6 @@ public class ChatMessageHandler {
         return true;
     }
 
-    // Rate Limit
     private boolean checkRateLimit(SocketUser user, SocketIOClient client) {
         var res = rateLimitService.checkRateLimit(user.id(), 10000, Duration.ofMinutes(1));
 
@@ -205,7 +187,6 @@ public class ChatMessageHandler {
         return true;
     }
 
-    // Room 접근 권한
     private Room validateRoomAccess(String roomId, String userId, SocketIOClient client) {
         Room room = roomRepository.findById(roomId).orElse(null);
 
@@ -216,18 +197,17 @@ public class ChatMessageHandler {
         return room;
     }
 
-    // 비동기 처리
-    @Async
+    // 전용 스레드풀에서 실행
+    @Async("chatTaskExecutor")
     public void asyncHandleAIMentions(String roomId, String userId, MessageContent content) {
         aiService.handleAIMentions(roomId, userId, content);
     }
 
-    @Async
+    @Async("chatTaskExecutor")
     public void asyncUpdateLastActivity(String userId) {
         sessionService.updateLastActivity(userId);
     }
 
-    // 에러 응답
     private void sendError(SocketIOClient client, String code, String message) {
         client.sendEvent(ERROR, Map.of("code", code, "message", message));
     }

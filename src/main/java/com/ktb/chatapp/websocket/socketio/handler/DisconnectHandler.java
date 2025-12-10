@@ -31,17 +31,20 @@ public class DisconnectHandler {
         String userId = user.id();
         String userName = user.name();
 
-        // 현재 유저가 참여 중인 모든 방 가져오기
         Set<String> rooms = userRooms.get(userId);
 
         log.info("User disconnected: {} (rooms={})", userName, rooms);
 
-        // 각 방에서 정상적으로 퇴장 처리
+        // 각 방에 대해 안전하게 퇴장 처리
         for (String roomId : rooms) {
-            roomLeaveHandler.handleLeaveRoom(client, roomId);
+            try {
+                roomLeaveHandler.handleLeaveRoom(client, roomId);
+            } catch (Exception e) {
+                log.error("Failed to process leaveRoom for user {} in room {}", userId, roomId, e);
+            }
         }
 
-        // UserRooms 메모리 정리
+        // 메모리 정리
         userRooms.clear(userId);
 
         log.debug("Cleanup complete for user {}", userId);
