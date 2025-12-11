@@ -11,7 +11,7 @@ RUN mvn -B dependency:go-offline
 COPY src ./src
 
 # 테스트 패스/트랜잭션 문제 방지를 위해 테스트 스킵
-RUN mvn -B -DskipTests package
+RUN mvn -B -Dmaven.test.skip=true package
 
 FROM eclipse-temurin:21-jre AS runtime
 WORKDIR /app
