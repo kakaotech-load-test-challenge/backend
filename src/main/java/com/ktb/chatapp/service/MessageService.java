@@ -1,5 +1,6 @@
 package com.ktb.chatapp.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ktb.chatapp.dto.FileResponse;
 import com.ktb.chatapp.dto.MessageContent;
 import com.ktb.chatapp.dto.MessageResponse;
@@ -11,8 +12,11 @@ import com.ktb.chatapp.repository.MessageRepository;
 import com.ktb.chatapp.websocket.socketio.handler.MessageResponseMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
@@ -25,6 +29,12 @@ public class MessageService {
     private final MessageRepository messageRepository;
     private final FileRepository fileRepository;
     private final MessageResponseMapper messageResponseMapper;
+
+    // Redis 캐싱 추가
+    private final StringRedisTemplate redisTemplate;
+    private final ObjectMapper objectMapper;
+
+    private static final int RECENT_LIMIT = 50;
 
     /**
      * 텍스트 메시지 저장 (Mongo Read = 0)
@@ -52,7 +62,12 @@ public class MessageService {
                 .metadata(metadata)
                 .build();
 
-        return messageRepository.save(message);
+        Message saved = messageRepository.save(message);
+
+        // Redis 캐시 반영
+        cacheRecentMessage(roomId, message);
+
+        return saved;
     }
 
     /**
@@ -99,7 +114,32 @@ public class MessageService {
                 .metadata(metadata)
                 .build();
 
-        return messageRepository.save(message);
+        Message saved = messageRepository.save(message);
+
+        // Redis 캐시 반영
+        cacheRecentMessage(roomId, message);
+
+        return saved;
+    }
+
+    /**
+     * Redis에 최근 메시지 50개 저장
+     */
+    private void cacheRecentMessage(String roomId, Message message) {
+        try {
+            MessageResponse response = messageResponseMapper.mapToMessageResponse(message, null);
+            String key = "room:" + roomId + ":messages:recent";
+
+            String json = objectMapper.writeValueAsString(response);
+
+            redisTemplate.opsForList().leftPush(key, json);
+            redisTemplate.opsForList().trim(key, 0, RECENT_LIMIT - 1);
+            redisTemplate.expire(key, Duration.ofSeconds(60)); // TTL 60초
+
+        } catch (Exception e) {
+            log.warn("Failed to cache recent message", e);
+            // 캐싱은 실패해도 서비스는 정상동작해야 함
+        }
     }
 
     /**
@@ -108,10 +148,8 @@ public class MessageService {
     public MessageResponse toResponse(Message message) {
         if (message == null) return null;
 
-        // sender를 다시 조회하지 않음 → message.metadata.sender 사용
         MessageResponse response = messageResponseMapper.mapToMessageResponse(message, null);
 
-        // 파일 응답 포함 (file 조회는 saveFileMessage에서 이미 처리됨 → 여기선 조회 안 함)
         if (message.getMetadata() != null && message.getMetadata().containsKey("fileUrl")) {
             FileResponse fileResponse = FileResponse.fromMetadata(message.getMetadata());
             response.setFile(fileResponse);
@@ -132,12 +170,9 @@ public class MessageService {
             Map<String, Object> senderSnapshot
     ) {
         return switch (messageType) {
-            case "text" ->
-                    saveTextMessage(roomId, userId, messageContent, senderSnapshot);
-            case "file" ->
-                    saveFileMessage(roomId, userId, messageContent, fileData, senderSnapshot);
-            default ->
-                    throw new IllegalArgumentException("Unsupported message type: " + messageType);
+            case "text" -> saveTextMessage(roomId, userId, messageContent, senderSnapshot);
+            case "file" -> saveFileMessage(roomId, userId, messageContent, fileData, senderSnapshot);
+            default -> throw new IllegalArgumentException("Unsupported message type: " + messageType);
         };
     }
 }
