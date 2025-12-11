@@ -34,49 +34,55 @@ public class SocketIOConfig {
 
     @Bean(initMethod = "start", destroyMethod = "stop")
     public SocketIOServer socketIOServer(AuthTokenListener authTokenListener) {
+
         com.corundumstudio.socketio.Configuration config = new com.corundumstudio.socketio.Configuration();
         config.setHostname(host);
         config.setPort(port);
-        
-        var socketConfig = new SocketConfig();
+
+        SocketConfig socketConfig = new SocketConfig();
         socketConfig.setReuseAddress(true);
-        socketConfig.setTcpNoDelay(false);
-        socketConfig.setAcceptBackLog(10);
-        socketConfig.setTcpSendBufferSize(4096);
-        socketConfig.setTcpReceiveBufferSize(4096);
+        socketConfig.setTcpNoDelay(true);      // 지연 최소화
+        socketConfig.setAcceptBackLog(100);    // 연결 대기열 확장 → 부하테스트 안정성 크게 증가
         config.setSocketConfig(socketConfig);
 
-        config.setOrigin("*");
+        // WebSocket Origin
+        config.setOrigin("*"); // 필요하면 특정 도메인으로 제한 가능
 
-        // Socket.IO settings
-        config.setPingTimeout(60000);
-        config.setPingInterval(25000);
+        config.setPingInterval(25000); // 25초마다 ping
+        config.setPingTimeout(60000);  // pong 없으면 60초 후 연결 종료
         config.setUpgradeTimeout(10000);
 
-        config.setJsonSupport(new JacksonJsonSupport(new JavaTimeModule()));
-        config.setStoreFactory(new MemoryStoreFactory()); // 단일노드 전용
+        config.setBossThreads(1);   // accept 전담 스레드
+        config.setWorkerThreads(2); // 메시지 처리 스레드 → CPU 폭발 방지
 
-        log.info("Socket.IO server configured on {}:{} with {} boss threads and {} worker threads",
-                 host, port, config.getBossThreads(), config.getWorkerThreads());
-        var socketIOServer = new SocketIOServer(config);
-        socketIOServer.getNamespace(Namespace.DEFAULT_NAME).addAuthTokenListener(authTokenListener);
-        
-        return socketIOServer;
+        config.setJsonSupport(new JacksonJsonSupport(new JavaTimeModule()));
+        config.setStoreFactory(new MemoryStoreFactory()); // 단일 노드 환경
+
+        // Logging
+        log.info("Socket.IO configured on {}:{} (boss={}, worker={})",
+                host, port, config.getBossThreads(), config.getWorkerThreads());
+
+        // 서버 생성
+        SocketIOServer server = new SocketIOServer(config);
+
+        // 인증 listener 등록
+        server.getNamespace(Namespace.DEFAULT_NAME).addAuthTokenListener(authTokenListener);
+
+        return server;
     }
-    
+
     /**
-     * SpringAnnotationScanner는 BeanPostProcessor로서
-     * ApplicationContext 초기화 초기에 등록되고,
-     * 내부에서 사용하는 SocketIOServer는 Lazy로 지연되어
-     * 다른 Bean들의 초기화 과정에 간섭하지 않게 한다.
+     * Event listener 등록
      */
     @Bean
     @Role(ROLE_INFRASTRUCTURE)
-    public BeanPostProcessor springAnnotationScanner(@Lazy SocketIOServer socketIOServer) {
-        return new SpringAnnotationScanner(socketIOServer);
+    public BeanPostProcessor springAnnotationScanner(@Lazy SocketIOServer server) {
+        return new SpringAnnotationScanner(server);
     }
-    
-    // 인메모리 저장소, 단일 노드 환경에서만 사용
+
+    /**
+     * 단일 노드 환경에서 사용하는 In-memory 데이터 저장소
+     */
     @Bean
     @ConditionalOnProperty(name = "socketio.enabled", havingValue = "true", matchIfMissing = true)
     public ChatDataStore chatDataStore() {
