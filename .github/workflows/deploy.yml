@@ -83,7 +83,7 @@ jobs:
               "Name=tag:version,Values=v2" \
               "Name=instance-state-name,Values=running" \
             --query 'Reservations[*].Instances[*].PublicIpAddress' \
-            --output text)
+            --output json | jq -r '.[] | .[]' | tr '\n' ' ')
 
           if [ -z "$INSTANCE_IPS" ]; then
             echo "No EC2 instances found with Role=backend and version=v2"
