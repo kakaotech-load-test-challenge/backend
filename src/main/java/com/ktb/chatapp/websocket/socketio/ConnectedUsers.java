@@ -1,7 +1,6 @@
 package com.ktb.chatapp.websocket.socketio;
 
 import java.util.Set;
-import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -9,13 +8,17 @@ import org.springframework.stereotype.Component;
 
 @Component
 @ConditionalOnProperty(name = "socketio.enabled", havingValue = "true", matchIfMissing = true)
-@RequiredArgsConstructor
 public class ConnectedUsers {
 
     private static final String USER_SOCKET_KEY_PREFIX = "conn_users:userid:";
 
-    @Qualifier("websocketRedisTemplate")
     private final RedisTemplate<String, Object> redis;
+
+    public ConnectedUsers(
+            @Qualifier("websocketRedisTemplate") RedisTemplate<String, Object> redis
+    ) {
+        this.redis = redis;
+    }
 
     /**
      * Get connected user info
@@ -41,8 +44,7 @@ public class ConnectedUsers {
     }
 
     /**
-     * Count how many connected user keys exists
-     * (Redis doesn't have direct count, so we count matching keys)
+     * Count how many connected users
      */
     public int size() {
         Set<String> keys = redis.keys(USER_SOCKET_KEY_PREFIX + "*");

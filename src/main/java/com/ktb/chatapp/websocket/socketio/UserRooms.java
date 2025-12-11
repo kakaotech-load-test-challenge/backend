@@ -3,7 +3,7 @@ package com.ktb.chatapp.websocket.socketio;
 import java.util.Collections;
 import java.util.Set;
 import java.util.stream.Collectors;
-import lombok.RequiredArgsConstructor;
+
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -11,14 +11,17 @@ import org.springframework.stereotype.Component;
 
 @Component
 @ConditionalOnProperty(name = "socketio.enabled", havingValue = "true", matchIfMissing = true)
-@RequiredArgsConstructor
 public class UserRooms {
 
     private static final String USER_ROOM_KEY_PREFIX = "userroom:roomids:";
 
-    // ★ WebSocket 전용 Redis 사용
-    @Qualifier("websocketRedisTemplate")
     private final RedisTemplate<String, Object> redis;
+
+    public UserRooms(
+            @Qualifier("websocketRedisTemplate") RedisTemplate<String, Object> redis
+    ) {
+        this.redis = redis;
+    }
 
     /**
      * Get all room IDs the user is currently in.
@@ -63,13 +66,6 @@ public class UserRooms {
      */
     public boolean isInRoom(String userId, String roomId) {
         return redis.opsForSet().isMember(buildKey(userId), roomId);
-    }
-
-    /**
-     * Remove all rooms by iterating each one (safer version)
-     */
-    public void removeAllRooms(String userId) {
-        clear(userId);
     }
 
     private String buildKey(String userId) {

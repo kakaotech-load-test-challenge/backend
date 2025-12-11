@@ -2,12 +2,11 @@ package com.ktb.chatapp.websocket.socketio.handler;
 
 import com.ktb.chatapp.dto.FetchMessagesRequest;
 import com.ktb.chatapp.dto.FetchMessagesResponse;
-import com.ktb.chatapp.dto.MessageResponse;
 import com.ktb.chatapp.model.Message;
 import com.ktb.chatapp.repository.MessageRepository;
 import com.ktb.chatapp.service.MessageReadStatusService;
 import com.ktb.chatapp.service.MessageService;
-import lombok.RequiredArgsConstructor;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.*;
@@ -18,23 +17,30 @@ import org.springframework.data.redis.core.RedisTemplate;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class MessageLoader {
 
     private final MessageRepository messageRepository;
     private final MessageService messageService;
     private final MessageReadStatusService messageReadStatusService;
-
-    // ★ RedisB (캐싱 전용)
-    @Qualifier("cacheRedisTemplate")
     private final RedisTemplate<String, Object> redis;
 
+    public MessageLoader(
+            MessageRepository messageRepository,
+            MessageService messageService,
+            MessageReadStatusService messageReadStatusService,
+            @Qualifier("cacheRedisTemplate") RedisTemplate<String, Object> redis
+    ) {
+        this.messageRepository = messageRepository;
+        this.messageService = messageService;
+        this.messageReadStatusService = messageReadStatusService;
+        this.redis = redis;
+    }
+
     private static final int PAGE_SIZE = 30;
-    private static final long CACHE_SECONDS = 30;  // 부하테스트면 짧게 캐싱해도 충분
+    private static final long CACHE_SECONDS = 30;
 
     public FetchMessagesResponse loadMessages(FetchMessagesRequest req, String userId) {
         try {
@@ -52,7 +58,9 @@ public class MessageLoader {
 
     private LocalDateTime convertBefore(Long beforeMillis) {
         if (beforeMillis == null) return LocalDateTime.now();
-        return Instant.ofEpochMilli(beforeMillis).atZone(ZoneId.systemDefault()).toLocalDateTime();
+        return Instant.ofEpochMilli(beforeMillis)
+                .atZone(ZoneId.systemDefault())
+                .toLocalDateTime();
     }
 
     private FetchMessagesResponse loadMessagesInternal(
@@ -66,10 +74,7 @@ public class MessageLoader {
         List<Message> cached = (List<Message>) redis.opsForValue().get(cacheKey);
 
         if (cached != null) {
-            log.debug("[CACHE HIT] roomId={} before={}", roomId, before);
-
             asyncUpdateReadStatus(cached, userId);
-
             return FetchMessagesResponse.builder()
                     .messages(cached.stream().map(messageService::toResponse).toList())
                     .hasMore(cached.size() == PAGE_SIZE)
@@ -98,7 +103,6 @@ public class MessageLoader {
                 .build();
     }
 
-    // 캐싱 Key 생성
     private String buildCacheKey(String roomId, LocalDateTime before) {
         if (before == null) {
             return "cache:messages:room:" + roomId + ":latest";
@@ -106,7 +110,6 @@ public class MessageLoader {
         return "cache:messages:room:" + roomId + ":before:" + before.toInstant(ZoneOffset.UTC).toEpochMilli();
     }
 
-    // READ STATUS 업데이트
     @Async
     public CompletableFuture<Void> asyncUpdateReadStatus(List<Message> messages, String userId) {
         try {

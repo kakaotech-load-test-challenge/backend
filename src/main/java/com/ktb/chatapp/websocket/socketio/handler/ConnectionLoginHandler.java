@@ -3,6 +3,7 @@ package com.ktb.chatapp.websocket.socketio.handler;
 import com.corundumstudio.socketio.SocketIOClient;
 import com.corundumstudio.socketio.SocketIOServer;
 import com.corundumstudio.socketio.annotation.OnDisconnect;
+import com.ktb.chatapp.dto.JoinRoomRequest;
 import com.ktb.chatapp.websocket.socketio.ConnectedUsers;
 import com.ktb.chatapp.websocket.socketio.SocketUser;
 import com.ktb.chatapp.websocket.socketio.UserRooms;
@@ -63,8 +64,13 @@ public class ConnectionLoginHandler {
             // RedisA에 현재 연결상태 등록
             connectedUsers.set(userId, user);
 
-            // 재접속 시 기존 방 재입장
-            userRooms.get(userId).forEach(roomId -> roomJoinHandler.handleJoinRoom(client, roomId));
+            userRooms.get(userId).forEach(roomId -> {
+                JoinRoomRequest req = new JoinRoomRequest();
+                req.setRoomId(roomId);
+                req.setPassword(null); // 재입장에서는 비번 필요 없음 (Redis 인증 사용)
+
+                roomJoinHandler.handleJoinRoom(client, req);
+            });
 
             // 기본 방(알림방 등) 입장
             client.joinRooms(Set.of("user:" + userId, "room-list"));
@@ -86,7 +92,6 @@ public class ConnectionLoginHandler {
         SocketUser existing = connectedUsers.get(userId);
         if (existing == null) return;
 
-        // 멀티 노드 호환: userId 기반 강제 세션 종료
         var room = socketIOServer.getRoomOperations("user:" + userId);
 
         room.getClients().forEach(existingClient -> {
@@ -106,7 +111,6 @@ public class ConnectionLoginHandler {
                         "message", "다른 기기에서 로그인하여 세션이 종료되었습니다."
                 ));
 
-                // 강제 disconnect
                 existingClient.disconnect();
             }
         });
@@ -121,11 +125,10 @@ public class ConnectionLoginHandler {
 
         try {
             String socketId = client.getSessionId().toString();
-
             SocketUser active = connectedUsers.get(userId);
 
             if (active != null && active.socketId().equals(socketId)) {
-                connectedUsers.del(userId); // RedisA에서 제거
+                connectedUsers.del(userId);
             }
 
             // 유저가 참여한 모든 방 정리

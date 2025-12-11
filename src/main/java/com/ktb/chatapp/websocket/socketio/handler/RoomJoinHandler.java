@@ -5,6 +5,7 @@ import com.corundumstudio.socketio.SocketIOServer;
 import com.corundumstudio.socketio.annotation.OnEvent;
 import com.ktb.chatapp.dto.FetchMessagesRequest;
 import com.ktb.chatapp.dto.FetchMessagesResponse;
+import com.ktb.chatapp.dto.JoinRoomRequest;
 import com.ktb.chatapp.dto.JoinRoomSuccessResponse;
 import com.ktb.chatapp.dto.UserResponse;
 import com.ktb.chatapp.model.Message;
@@ -16,14 +17,17 @@ import com.ktb.chatapp.repository.RoomRepository;
 import com.ktb.chatapp.repository.UserRepository;
 import com.ktb.chatapp.service.MessageService;
 import com.ktb.chatapp.service.SessionService;
+import com.ktb.chatapp.service.RoomPasswordService;
 import com.ktb.chatapp.websocket.socketio.SocketUser;
 import com.ktb.chatapp.websocket.socketio.UserRooms;
+import com.ktb.chatapp.websocket.socketio.ChatDataStore;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -44,10 +48,13 @@ public class RoomJoinHandler {
     private final MessageLoader messageLoader;
     private final MessageService messageService;
     private final SessionService sessionService;
+    private final ChatDataStore chatDataStore;
+    private final RoomPasswordService roomPasswordService;
 
     @OnEvent(JOIN_ROOM)
-    public void handleJoinRoom(SocketIOClient client, String roomId) {
+    public void handleJoinRoom(SocketIOClient client, JoinRoomRequest request) {
         try {
+
             SocketUser socketUser = client.get("user");
             if (socketUser == null) {
                 client.sendEvent(JOIN_ROOM_ERROR, Map.of("message", "세션 만료"));
@@ -56,34 +63,50 @@ public class RoomJoinHandler {
 
             String userId = socketUser.id();
             String userName = socketUser.name();
+            String roomId = request.getRoomId();
+            String password = request.getPassword();
 
-            // 세션 검증
             if (!sessionService.validateSession(userId, socketUser.authSessionId()).isValid()) {
                 client.sendEvent(JOIN_ROOM_ERROR, Map.of("message", "세션 만료"));
                 return;
             }
 
-            // 방 조회
             Room room = roomRepository.findById(roomId).orElse(null);
             if (room == null) {
                 client.sendEvent(JOIN_ROOM_ERROR, Map.of("message", "채팅방을 찾을 수 없습니다."));
                 return;
             }
 
-            // 빠른 재입장: Redis에서 체크
+            String authKey = "room:auth:" + roomId + ":" + userId;
+            boolean authorized = chatDataStore.get(authKey, Boolean.class).orElse(false);
+
+            // 인증되지 않은 경우 → 비밀번호 검증
+            if (!authorized) {
+
+                // 비밀번호 방인데 비밀번호 없거나 틀리면 튕김
+                if (room.isHasPassword() &&
+                        (password == null || !roomPasswordService.matches(room, password))) {
+
+                    client.sendEvent(JOIN_ROOM_ERROR, Map.of("message", "비밀번호가 올바르지 않습니다."));
+                    client.disconnect();
+                    return;
+                }
+
+                // 인증 성공 → Redis/Local 캐싱
+                chatDataStore.set(authKey, true);
+            }
+
             if (userRooms.isInRoom(userId, roomId)) {
                 client.joinRoom(roomId);
                 client.sendEvent(JOIN_ROOM_SUCCESS, Map.of("roomId", roomId));
                 return;
             }
 
-            // RedisA 기반 방 참여 등록
             userRooms.add(userId, roomId);
 
-            // Socket.IO join
+            // 실제 소켓 join
             client.joinRoom(roomId);
 
-            // 시스템 메시지 생성 & 저장
             Message joinMessage = Message.builder()
                     .roomId(roomId)
                     .type(MessageType.system)
@@ -94,19 +117,14 @@ public class RoomJoinHandler {
 
             joinMessage = messageRepository.save(joinMessage);
 
-            // 최근 메시지 30개
-            FetchMessagesRequest req = new FetchMessagesRequest(roomId, 30, null);
-            FetchMessagesResponse fetched = messageLoader.loadMessages(req, userId);
+            FetchMessagesRequest fetchRequest = new FetchMessagesRequest(roomId, 30, null);
+            FetchMessagesResponse fetched = messageLoader.loadMessages(fetchRequest, userId);
 
-            // 참여자 목록 조회 (DB 1회)
-            Set<String> participantIds = room.getParticipantIds();
-            List<User> users = userRepository.findByIdIn(participantIds);
-
-            List<UserResponse> participants = users.stream()
+            List<UserResponse> participants = userRepository.findByIdIn(room.getParticipantIds())
+                    .stream()
                     .map(UserResponse::from)
                     .collect(Collectors.toList());
 
-            // 성공 응답 전송
             JoinRoomSuccessResponse response = JoinRoomSuccessResponse.builder()
                     .roomId(roomId)
                     .participants(participants)
@@ -117,11 +135,9 @@ public class RoomJoinHandler {
 
             client.sendEvent(JOIN_ROOM_SUCCESS, response);
 
-            // 시스템 메시지를 방 전체에게 전송
             socketIOServer.getRoomOperations(roomId)
                     .sendEvent(MESSAGE, messageService.toResponse(joinMessage));
 
-            // 참여자 목록도 브로드캐스트
             socketIOServer.getRoomOperations(roomId)
                     .sendEvent(PARTICIPANTS_UPDATE, participants);
 
@@ -131,7 +147,7 @@ public class RoomJoinHandler {
         } catch (Exception e) {
             log.error("JOIN_ROOM 처리 중 오류", e);
             client.sendEvent(JOIN_ROOM_ERROR, Map.of("message",
-                    e.getMessage() != null ? e.getMessage() : "채팅방 입장 중 오류 발생"));
+                    e.getMessage() != null ? e.getMessage() : "채팅방 입장 오류"));
         }
     }
 }

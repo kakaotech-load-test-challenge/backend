@@ -8,7 +8,6 @@ import com.ktb.chatapp.dto.UserResponse;
 import com.ktb.chatapp.model.Message;
 import com.ktb.chatapp.model.MessageType;
 import com.ktb.chatapp.repository.MessageRepository;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -21,17 +20,23 @@ import java.util.*;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class MessageService {
 
     private final MessageRepository messageRepository;
     private final ObjectMapper objectMapper;
-
-    // ★ RedisB (캐싱 전용)
-    @Qualifier("cacheRedisTemplate")
     private final RedisTemplate<String, Object> redis;
 
-    private static final int LATEST_LIMIT = 30; // FetchMessages 기준과 통일
+    private static final int LATEST_LIMIT = 30;
+
+    public MessageService(
+            MessageRepository messageRepository,
+            ObjectMapper objectMapper,
+            @Qualifier("cacheRedisTemplate") RedisTemplate<String, Object> redis
+    ) {
+        this.messageRepository = messageRepository;
+        this.objectMapper = objectMapper;
+        this.redis = redis;
+    }
 
     /**
      * 텍스트 메시지 저장
@@ -100,6 +105,9 @@ public class MessageService {
         return saved;
     }
 
+    /**
+     * 최신 메시지 캐싱 (RedisB)
+     */
     private void updateLatestCache(String roomId, Message newMessage) {
         String key = "cache:messages:room:" + roomId + ":latest";
 
@@ -107,17 +115,14 @@ public class MessageService {
             List<Message> latest = (List<Message>) redis.opsForValue().get(key);
 
             if (latest == null) {
-                // 캐시가 없으면 새로 만든다
                 List<Message> list = new ArrayList<>();
                 list.add(newMessage);
                 redis.opsForValue().set(key, list, Duration.ofSeconds(30));
                 return;
             }
 
-            // 최신 메시지를 맨 앞에 추가
             latest.add(0, newMessage);
 
-            // 30개 유지
             if (latest.size() > LATEST_LIMIT) {
                 latest = latest.subList(0, LATEST_LIMIT);
             }
@@ -128,6 +133,7 @@ public class MessageService {
             log.warn("Failed to update latest Redis cache", e);
         }
     }
+
 
     /**
      * Message → DTO 변환
@@ -159,9 +165,6 @@ public class MessageService {
                 .build();
     }
 
-    /**
-     * 공통 저장 엔트리
-     */
     public Message saveMessage(
             String messageType,
             String roomId,
