@@ -6,7 +6,7 @@ set -e
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}Starting deployment to EC2 instances${NC}"
@@ -60,10 +60,10 @@ EOF"
 # 병렬 배포 (최대 5개 동시)
 PARALLEL_JOBS=5
 export -f deploy_to_instance
-export BACKEND_IMAGE
-export RED GREEN YELLOW NC
+export BACKEND_IMAGE RED GREEN YELLOW NC
 
-echo "$INSTANCE_IPS" | xargs -n 1 -P $PARALLEL_JOBS -I {} bash -c 'deploy_to_instance "$@"' _ {}
+
+echo "$INSTANCE_IPS" | xargs -n 1 -P $PARALLEL_JOBS bash -c 'deploy_to_instance "$1"' _
 
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}Deployment completed for all instances${NC}"
