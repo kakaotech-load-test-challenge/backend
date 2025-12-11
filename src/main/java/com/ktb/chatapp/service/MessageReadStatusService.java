@@ -26,16 +26,19 @@ public class MessageReadStatusService {
         }
 
         try {
+            // 아직 읽지 않은 메시지만 업데이트
             Query query = new Query(
                     Criteria.where("_id").in(messageIds)
                             .and("readers.userId").ne(userId)
             );
 
+            // addToSet + each → 중복 없이 한번에 삽입
+            Document readerInfo = new Document("userId", userId)
+                    .append("readAt", LocalDateTime.now());
+
             Update update = new Update()
-                    .addToSet("readers",
-                            new Document("userId", userId)
-                                    .append("readAt", LocalDateTime.now())
-                    );
+                    .addToSet("readers")
+                    .each(readerInfo);
 
             var result = mongoTemplate.updateMulti(query, update, "messages");
 
