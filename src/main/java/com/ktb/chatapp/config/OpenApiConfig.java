@@ -1,4 +1,4 @@
-package com.ktb.chatapp.config;
+/* package com.ktb.chatapp.config;
 
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
@@ -17,9 +17,6 @@ import org.springframework.context.annotation.Configuration;
 
 import java.util.List;
 
-/**
- * OpenAPI (Swagger) 설정 클래스
- */
 @Configuration
 public class OpenApiConfig {
 
@@ -156,4 +153,4 @@ public class OpenApiConfig {
                         .addList(jwtSchemeName)
                         .addList(sessionSchemeName));
     }
-}
+}*/

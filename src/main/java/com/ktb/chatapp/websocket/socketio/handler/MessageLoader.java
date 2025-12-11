@@ -4,10 +4,9 @@ import com.ktb.chatapp.dto.FetchMessagesRequest;
 import com.ktb.chatapp.dto.FetchMessagesResponse;
 import com.ktb.chatapp.dto.MessageResponse;
 import com.ktb.chatapp.model.Message;
-import com.ktb.chatapp.model.User;
 import com.ktb.chatapp.repository.MessageRepository;
-import com.ktb.chatapp.repository.UserRepository;
 import com.ktb.chatapp.service.MessageReadStatusService;
+import com.ktb.chatapp.service.MessageService;
 import jakarta.annotation.Nullable;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,7 +18,6 @@ import org.springframework.stereotype.Component;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -27,8 +25,8 @@ import java.util.stream.Collectors;
 public class MessageLoader {
 
     private final MessageRepository messageRepository;
-    private final UserRepository userRepository;
-    private final MessageResponseMapper messageResponseMapper;
+
+    private final MessageService messageService; // ★ 변환의 단일 진실 소스
     private final MessageReadStatusService messageReadStatusService;
 
     private static final int BATCH_SIZE = 30;
@@ -86,45 +84,18 @@ public class MessageLoader {
 
         List<Message> messages = messagePage.getContent();
 
-        // sender 캐시 로딩
-        Map<String, User> userCache = loadUsers(messages);
-
-        // 읽음 처리 비동기 실행
+        // 읽음 처리 비동기 실행 (DB bulk update)
         asyncUpdateReadStatus(messages, userId);
 
-        // MessageResponse 변환 (캐시 사용)
+        // 메시지 변환 — 오직 MessageService만 사용
         List<MessageResponse> responses = messages.stream()
-                .map(msg -> messageResponseMapper.mapToMessageResponse(
-                        msg,
-                        userCache.get(msg.getSenderId())
-                ))
+                .map(messageService::toResponse)   // ★ metadata 기반 FileResponse 자동 처리
                 .toList();
 
         return FetchMessagesResponse.builder()
                 .messages(responses)
                 .hasMore(messagePage.hasNext())
                 .build();
-    }
-
-    // senderId 목록 → User 목록을 한 번에 조회
-    private Map<String, User> loadUsers(List<Message> messages) {
-        Set<String> senderIds = messages.stream()
-                .map(Message::getSenderId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-
-        if (senderIds.isEmpty()) {
-            return Collections.emptyMap();
-        }
-
-        List<User> users = userRepository.findByIdIn(senderIds);
-
-        Map<String, User> cache = new HashMap<>();
-        for (User u : users) {
-            cache.put(u.getId(), u);
-        }
-
-        return cache;
     }
 
     // 읽음 처리 비동기 실행
@@ -142,11 +113,5 @@ public class MessageLoader {
         }
 
         return CompletableFuture.completedFuture(null);
-    }
-
-    @Nullable
-    private User findUserById(String id) {
-        if (id == null) return null;
-        return userRepository.findById(id).orElse(null);
     }
 }

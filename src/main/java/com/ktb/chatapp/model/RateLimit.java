@@ -24,6 +24,5 @@ public class RateLimit {
 
     private int count;
 
-    @Indexed(expireAfter = "0s")
     private Instant expiresAt;
 }
