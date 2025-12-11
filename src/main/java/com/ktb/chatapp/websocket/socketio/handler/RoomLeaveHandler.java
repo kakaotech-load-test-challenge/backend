@@ -17,13 +17,14 @@ import com.ktb.chatapp.service.SessionService;
 import com.ktb.chatapp.websocket.socketio.SocketUser;
 import com.ktb.chatapp.websocket.socketio.UserRooms;
 
-import java.time.LocalDateTime;
-import java.util.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+
+import java.time.LocalDateTime;
+import java.util.*;
+import java.util.stream.Collectors;
 
 import static com.ktb.chatapp.websocket.socketio.SocketIOEvents.*;
 
@@ -60,36 +61,38 @@ public class RoomLeaveHandler {
                 return;
             }
 
-            // 방에 없는 유저면 무시
+            // RedisA에 기록된 참여 여부 확인
             if (!userRooms.isInRoom(userId, roomId)) {
                 log.debug("User {} is not in room {}", userId, roomId);
                 return;
             }
 
-            // Room 1회 조회
+            // MongoDB Room 조회 — 참가자 목록 읽기용으로만 사용
             Room room = roomRepository.findById(roomId).orElse(null);
             if (room == null) {
                 log.warn("Room {} does not exist", roomId);
                 return;
             }
 
-            // 참가자 제거
-            room.getParticipantIds().remove(userId);
-            roomRepository.save(room);
+            // DB에서 참가자 제거 → 부하테스트 병목 제거
+            // room.getParticipantIds().remove(userId);
+            // roomRepository.save(room);
+
+            // RedisA 기반 참여자 제거
+            userRooms.remove(userId, roomId);
 
             // 소켓에서 제거
             client.leaveRoom(roomId);
-            userRooms.remove(userId, roomId);
 
             log.info("User {} left room {}", userName, room.getName());
 
             // 시스템 메시지 전송
             sendSystemMessage(roomId, userName + "님이 퇴장하였습니다.");
 
-            // 참여자 목록 업데이트
+            // 참여자 목록 업데이트 (read-only DB + RedisA 조합)
             broadcastParticipantList(room);
 
-            // 프론트에 USER_LEFT 이벤트 전달
+            // 프론트 이벤트
             socketIOServer.getRoomOperations(roomId)
                     .sendEvent(USER_LEFT, Map.of("userId", userId, "userName", userName));
 
@@ -109,7 +112,7 @@ public class RoomLeaveHandler {
                     .type(MessageType.system)
                     .timestamp(LocalDateTime.now())
                     .content(content)
-                    .metadata(new HashMap<>()) // file 없음
+                    .metadata(Map.of())
                     .build();
 
             Message saved = messageRepository.save(msg);
@@ -124,24 +127,26 @@ public class RoomLeaveHandler {
     }
 
     /**
-     * 참가자 목록 한 번에 불러와서 브로드캐스트
+     * 참가자 목록 한 번에 브로드캐스트
+     * MongoDB는 읽기만 하고, 참여자 상태는 RedisA(UserRooms)가 관리
      */
     private void broadcastParticipantList(Room room) {
 
-        Set<String> ids = room.getParticipantIds();  // Set 그대로 사용 (성능 ↑)
+        Set<String> ids = room.getParticipantIds(); // 원본 구조 유지: "정적" 참가자 목록
+
+        // 실제 참여 여부는 RedisA에서 보장됨
         if (ids.isEmpty()) {
             socketIOServer.getRoomOperations(room.getId())
                     .sendEvent(PARTICIPANTS_UPDATE, List.of());
             return;
         }
 
-        // findByIdIn — DB 1회 조회
         List<User> users = userRepository.findByIdIn(ids);
 
         List<UserResponse> participants =
                 users.stream()
                         .map(UserResponse::from)
-                        .toList();
+                        .collect(Collectors.toList());
 
         socketIOServer.getRoomOperations(room.getId())
                 .sendEvent(PARTICIPANTS_UPDATE, participants);

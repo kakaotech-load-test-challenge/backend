@@ -7,17 +7,18 @@ import com.ktb.chatapp.model.Message;
 import com.ktb.chatapp.repository.MessageRepository;
 import com.ktb.chatapp.service.MessageReadStatusService;
 import com.ktb.chatapp.service.MessageService;
-import jakarta.annotation.Nullable;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.*;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
+import org.springframework.data.redis.core.RedisTemplate;
 
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -25,25 +26,23 @@ import java.util.concurrent.CompletableFuture;
 public class MessageLoader {
 
     private final MessageRepository messageRepository;
-
-    private final MessageService messageService; // ★ 변환의 단일 진실 소스
+    private final MessageService messageService;
     private final MessageReadStatusService messageReadStatusService;
 
-    private static final int BATCH_SIZE = 30;
+    // ★ RedisB (캐싱 전용)
+    @Qualifier("cacheRedisTemplate")
+    private final RedisTemplate<String, Object> redis;
 
-    public FetchMessagesResponse loadMessages(FetchMessagesRequest data, String userId) {
+    private static final int PAGE_SIZE = 30;
+    private static final long CACHE_SECONDS = 30;  // 부하테스트면 짧게 캐싱해도 충분
+
+    public FetchMessagesResponse loadMessages(FetchMessagesRequest req, String userId) {
         try {
-            LocalDateTime before = convertBeforeMillis(data.before());
-
-            return loadMessagesInternal(
-                    data.roomId(),
-                    data.limit(BATCH_SIZE),
-                    before,
-                    userId
-            );
+            LocalDateTime before = convertBefore(req.before());
+            return loadMessagesInternal(req.roomId(), PAGE_SIZE, before, userId);
 
         } catch (Exception e) {
-            log.error("Error loading messages for room {}", data.roomId(), e);
+            log.error("Error loading messages for room {}", req.roomId(), e);
             return FetchMessagesResponse.builder()
                     .messages(Collections.emptyList())
                     .hasMore(false)
@@ -51,14 +50,9 @@ public class MessageLoader {
         }
     }
 
-    private LocalDateTime convertBeforeMillis(Long beforeMillis) {
-        if (beforeMillis == null) {
-            return LocalDateTime.now();
-        }
-        return LocalDateTime.ofInstant(
-                Instant.ofEpochMilli(beforeMillis),
-                ZoneId.systemDefault()
-        );
+    private LocalDateTime convertBefore(Long beforeMillis) {
+        if (beforeMillis == null) return LocalDateTime.now();
+        return Instant.ofEpochMilli(beforeMillis).atZone(ZoneId.systemDefault()).toLocalDateTime();
     }
 
     private FetchMessagesResponse loadMessagesInternal(
@@ -67,12 +61,22 @@ public class MessageLoader {
             LocalDateTime before,
             String userId
     ) {
+        String cacheKey = buildCacheKey(roomId, before);
 
-        Pageable pageable = PageRequest.of(
-                0,
-                limit,
-                Sort.by("timestamp").descending()
-        );
+        List<Message> cached = (List<Message>) redis.opsForValue().get(cacheKey);
+
+        if (cached != null) {
+            log.debug("[CACHE HIT] roomId={} before={}", roomId, before);
+
+            asyncUpdateReadStatus(cached, userId);
+
+            return FetchMessagesResponse.builder()
+                    .messages(cached.stream().map(messageService::toResponse).toList())
+                    .hasMore(cached.size() == PAGE_SIZE)
+                    .build();
+        }
+
+        Pageable pageable = PageRequest.of(0, limit, Sort.by("timestamp").descending());
 
         Page<Message> messagePage =
                 messageRepository.findByRoomIdAndIsDeletedAndTimestampBefore(
@@ -84,34 +88,34 @@ public class MessageLoader {
 
         List<Message> messages = messagePage.getContent();
 
-        // 읽음 처리 비동기 실행 (DB bulk update)
+        redis.opsForValue().set(cacheKey, messages, Duration.ofSeconds(CACHE_SECONDS));
+
         asyncUpdateReadStatus(messages, userId);
 
-        // 메시지 변환 — 오직 MessageService만 사용
-        List<MessageResponse> responses = messages.stream()
-                .map(messageService::toResponse)   // ★ metadata 기반 FileResponse 자동 처리
-                .toList();
-
         return FetchMessagesResponse.builder()
-                .messages(responses)
+                .messages(messages.stream().map(messageService::toResponse).toList())
                 .hasMore(messagePage.hasNext())
                 .build();
     }
 
-    // 읽음 처리 비동기 실행
+    // 캐싱 Key 생성
+    private String buildCacheKey(String roomId, LocalDateTime before) {
+        if (before == null) {
+            return "cache:messages:room:" + roomId + ":latest";
+        }
+        return "cache:messages:room:" + roomId + ":before:" + before.toInstant(ZoneOffset.UTC).toEpochMilli();
+    }
+
+    // READ STATUS 업데이트
     @Async
     public CompletableFuture<Void> asyncUpdateReadStatus(List<Message> messages, String userId) {
         try {
-            List<String> ids = messages.stream()
-                    .map(Message::getId)
-                    .toList();
-
+            List<String> ids = messages.stream().map(Message::getId).toList();
             messageReadStatusService.updateReadStatus(ids, userId);
 
         } catch (Exception e) {
             log.error("async updateReadStatus failed", e);
         }
-
         return CompletableFuture.completedFuture(null);
     }
 }

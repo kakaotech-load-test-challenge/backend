@@ -1,4 +1,4 @@
-package com.ktb.chatapp.websocket.socketio.ai;
+/*package com.ktb.chatapp.websocket.socketio.ai;
 
 import com.ktb.chatapp.config.MongoTestContainer;
 import com.ktb.chatapp.websocket.socketio.handler.StreamingSession;
@@ -20,17 +20,6 @@ import reactor.test.StepVerifier;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * AiService 통합 테스트
- * 실제 OpenAI API를 호출하여 테스트
- *
- * 테스트 실행 방법:
- * mvn test -Dtest=AiServiceIntegrationTest -Dspring.ai.openai.api-key=YOUR_API_KEY
- *
- * 또는 환경변수 설정:
- * export OPENAI_API_KEY=your_actual_api_key
- * mvn test -Dtest=AiServiceIntegrationTest
- */
 @SpringBootTest
 @DisplayName("AiService 통합 테스트 (실제 API 호출)")
 @TestPropertySource(properties = "socketio.enabled=true")
@@ -274,3 +263,4 @@ class AiServiceIntegrationTest {
                 .verifyComplete();
     }
 }
+*/

@@ -11,13 +11,13 @@ import com.ktb.chatapp.repository.MessageRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 @Slf4j
 @Service
@@ -25,11 +25,13 @@ import java.util.Map;
 public class MessageService {
 
     private final MessageRepository messageRepository;
-
-    private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
 
-    private static final int RECENT_LIMIT = 50;
+    // ★ RedisB (캐싱 전용)
+    @Qualifier("cacheRedisTemplate")
+    private final RedisTemplate<String, Object> redis;
+
+    private static final int LATEST_LIMIT = 30; // FetchMessages 기준과 통일
 
     /**
      * 텍스트 메시지 저장
@@ -43,9 +45,7 @@ public class MessageService {
         if (messageContent == null || messageContent.isEmpty()) return null;
 
         Map<String, Object> metadata = new HashMap<>();
-        if (senderSnapshot != null) {
-            metadata.put("sender", senderSnapshot);
-        }
+        if (senderSnapshot != null) metadata.put("sender", senderSnapshot);
 
         Message message = Message.builder()
                 .roomId(roomId)
@@ -58,14 +58,13 @@ public class MessageService {
                 .build();
 
         Message saved = messageRepository.save(message);
-        cacheRecentMessage(roomId, saved);
 
+        updateLatestCache(roomId, saved);
         return saved;
     }
 
     /**
      * 파일 메시지 저장
-     * (프론트에서 fileData: {url, mimeType, originalName, size})
      */
     public Message saveFileMessage(
             String roomId,
@@ -74,74 +73,73 @@ public class MessageService {
             Map<String, Object> fileData,
             Map<String, Object> senderSnapshot
     ) {
-        if (fileData == null || fileData.get("url") == null) {
+        if (fileData == null || fileData.get("url") == null)
             throw new IllegalArgumentException("파일 URL이 존재하지 않습니다.");
-        }
-
-        String url = (String) fileData.get("url");
-        String mimeType = (String) fileData.getOrDefault("mimeType", "application/octet-stream");
-        String originalName = (String) fileData.getOrDefault("originalName", "file");
-        long size = ((Number) fileData.getOrDefault("size", 0)).longValue();
 
         Map<String, Object> metadata = new HashMap<>();
-        metadata.put("fileUrl", url);
-        metadata.put("mimeType", mimeType);
-        metadata.put("originalName", originalName);
-        metadata.put("size", size);
+        metadata.put("fileUrl", fileData.get("url"));
+        metadata.put("mimeType", fileData.getOrDefault("mimeType", "application/octet-stream"));
+        metadata.put("originalName", fileData.getOrDefault("originalName", "file"));
+        metadata.put("size", fileData.getOrDefault("size", 0));
 
-        if (senderSnapshot != null) {
-            metadata.put("sender", senderSnapshot);
-        }
+        if (senderSnapshot != null) metadata.put("sender", senderSnapshot);
 
         Message message = Message.builder()
                 .roomId(roomId)
                 .senderId(userId)
                 .type(MessageType.file)
-                .content(content.getTrimmedContent())
+                .content(content != null ? content.getTrimmedContent() : null)
                 .timestamp(LocalDateTime.now())
-                .mentions(content.aiMentions())
+                .mentions(content != null ? content.aiMentions() : null)
                 .metadata(metadata)
                 .build();
 
         Message saved = messageRepository.save(message);
-        cacheRecentMessage(roomId, saved);
 
+        updateLatestCache(roomId, saved);
         return saved;
     }
 
-    /**
-     * Redis 최근 메시지 캐싱
-     */
-    private void cacheRecentMessage(String roomId, Message message) {
+    private void updateLatestCache(String roomId, Message newMessage) {
+        String key = "cache:messages:room:" + roomId + ":latest";
+
         try {
-            MessageResponse response = toResponse(message);
-            String key = "room:" + roomId + ":messages:recent";
+            List<Message> latest = (List<Message>) redis.opsForValue().get(key);
 
-            String json = objectMapper.writeValueAsString(response);
+            if (latest == null) {
+                // 캐시가 없으면 새로 만든다
+                List<Message> list = new ArrayList<>();
+                list.add(newMessage);
+                redis.opsForValue().set(key, list, Duration.ofSeconds(30));
+                return;
+            }
 
-            redisTemplate.opsForList().leftPush(key, json);
-            redisTemplate.opsForList().trim(key, 0, RECENT_LIMIT - 1);
-            redisTemplate.expire(key, Duration.ofSeconds(60));
+            // 최신 메시지를 맨 앞에 추가
+            latest.add(0, newMessage);
+
+            // 30개 유지
+            if (latest.size() > LATEST_LIMIT) {
+                latest = latest.subList(0, LATEST_LIMIT);
+            }
+
+            redis.opsForValue().set(key, latest, Duration.ofSeconds(30));
 
         } catch (Exception e) {
-            log.warn("Failed to cache recent message", e);
+            log.warn("Failed to update latest Redis cache", e);
         }
     }
 
     /**
-     * Message → MessageResponse 직접 변환
-     * (MessageResponseMapper 제거됨)
+     * Message → DTO 변환
      */
     public MessageResponse toResponse(Message message) {
         if (message == null) return null;
 
-        // senderSnapshot이 metadata.sender에 있을 수도 있음
         UserResponse sender = null;
         if (message.getMetadata() != null && message.getMetadata().get("sender") instanceof Map<?,?> map) {
             sender = UserResponse.fromSnapshot((Map<String, Object>) map);
         }
 
-        // 파일 메시지인 경우 FileResponse 구성
         FileResponse fileResponse = null;
         if (message.getMetadata() != null && message.getMetadata().containsKey("fileUrl")) {
             fileResponse = FileResponse.fromMetadata(message.getMetadata());
@@ -162,7 +160,7 @@ public class MessageService {
     }
 
     /**
-     * messageType 에 따른 분기 처리
+     * 공통 저장 엔트리
      */
     public Message saveMessage(
             String messageType,
