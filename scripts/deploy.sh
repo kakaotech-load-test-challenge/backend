@@ -3,69 +3,50 @@
 set -e
 
 # 색상 정의
-RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}Starting deployment to EC2 instances${NC}"
-echo -e "${GREEN}========================================${NC}"
-echo ""
+echo -e "${GREEN}=== Starting Deployment ===${NC}"
 
-# 환경 변수 확인
-if [ -z "$INSTANCE_IPS" ]; then
-    echo -e "${RED}Error: INSTANCE_IPS environment variable is not set${NC}"
+# 필수 변수 체크
+if [ -z "$INSTANCE_IPS" ] || [ -z "$EC2_USER" ] || [ -z "$IMAGE_TAG" ]; then
+    echo "Error: Required environment variables are missing."
     exit 1
 fi
 
-# 배포 함수
+SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
 deploy_to_instance() {
     local IP=$1
-    local HOST_ALIAS="ec2-${IP//./-}"
+    echo -e "${YELLOW}Deploying to $IP ...${NC}"
 
-    echo -e "${YELLOW}Deploying to instance: $IP${NC}"
+    # 1. 작업 디렉토리 생성
+    ssh $SSH_OPTS "$EC2_USER@$IP" "mkdir -p ~/ktb"
 
-    # 배포 디렉토리 생성
-    ssh "$HOST_ALIAS" "mkdir -p ~/app"
+    # 2. docker-compose.yml 전송 (덮어쓰기)
+    # 로컬에 있는 파일을 서버로 전송합니다.
+    scp $SSH_OPTS ./docker-compose.yml "$EC2_USER@$IP:~/ktb/docker-compose.yml"
 
-    # Docker Compose 파일 전송
-    echo "  Copying configuration files..."
-    scp ./docker-compose.yaml "$HOST_ALIAS:~/app/"
-    scp ./docker-compose.prod.yml "$HOST_ALIAS:~/app/"
+    # 3. .env 파일 생성 (이미지 태그 지정)
+    # docker-compose.yml이 ${IMAGE_TAG:-latest}를 읽는데,
+    # 여기서 IMAGE_TAG=커밋해시 값을 주입하여 방금 빌드한 버전을 띄우게 합니다.
+    ssh $SSH_OPTS "$EC2_USER@$IP" "echo 'IMAGE_TAG=$IMAGE_TAG' > ~/ktb/.env.prod"
 
-    # 환경 변수 파일 생성
-    ssh "$HOST_ALIAS" "cat > ~/app/.env <<EOF
-BACKEND_IMAGE=$BACKEND_IMAGE
-FRONTEND_IMAGE=$FRONTEND_IMAGE
-EOF"
+    # 4. 배포 실행
+    # --pull always: 이미지를 확실하게 새로 받음
+    ssh $SSH_OPTS "$EC2_USER@$IP" "cd ~/ktb && docker compose up -d --pull always"
 
-    # Docker Compose로 서비스 배포
-    echo "  Pulling latest images..."
-    ssh "$HOST_ALIAS" "cd ~/app && docker-compose -f docker-compose.yaml -f docker-compose.prod.yml pull"
+    # 5. 미사용 이미지 정리 (선택사항)
+    ssh $SSH_OPTS "$EC2_USER@$IP" "docker image prune -f"
 
-    echo "  Stopping existing containers..."
-    ssh "$HOST_ALIAS" "cd ~/app && docker-compose -f docker-compose.yaml -f docker-compose.prod.yml down --remove-orphans"
-
-    echo "  Starting containers..."
-    ssh "$HOST_ALIAS" "cd ~/app && docker-compose -f docker-compose.yaml -f docker-compose.prod.yml up -d"
-
-    # 정리
-    echo "  Cleaning up old images..."
-    ssh "$HOST_ALIAS" "docker image prune -af --filter 'until=24h' || true"
-
-    echo -e "${GREEN}  Deployment completed for $IP${NC}"
-    echo ""
+    echo -e "${GREEN}Done: $IP${NC}"
 }
 
-# 병렬 배포 (최대 5개 동시)
-PARALLEL_JOBS=5
-export -f deploy_to_instance
-export BACKEND_IMAGE FRONTEND_IMAGE
-export RED GREEN YELLOW NC
+# IP 목록을 순회하며 배포
+for IP in $INSTANCE_IPS; do
+    deploy_to_instance "$IP" &
+done
 
-echo "$INSTANCE_IPS" | xargs -n 1 -P $PARALLEL_JOBS -I {} bash -c 'deploy_to_instance "$@"' _ {}
-
-echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}Deployment completed for all instances${NC}"
-echo -e "${GREEN}========================================${NC}"
+wait
+echo -e "${GREEN}=== All Deployments Completed ===${NC}"
