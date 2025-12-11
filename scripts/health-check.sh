@@ -38,7 +38,7 @@ health_check() {
 
     # Docker 컨테이너 상태 확인
     echo "  Checking container status..."
-    CONTAINER_STATUS=$(ssh $SSH_OPTS "$EC2_USER@$IP" "cd ~/app && docker-compose -f docker-compose.yaml -f docker-compose.prod.yml ps --format json" | jq -r '.[] | "\(.Service): \(.State)"')
+    CONTAINER_STATUS=$(ssh $SSH_OPTS "$EC2_USER@$IP" "cd ~/app && docker compose -f docker-compose.yaml -f docker-compose.prod.yml ps --format json" | jq -r '.[] | "\(.Service): \(.State)"')
 
     if [ -n "$CONTAINER_STATUS" ]; then
         echo "$CONTAINER_STATUS" | while read -r line; do

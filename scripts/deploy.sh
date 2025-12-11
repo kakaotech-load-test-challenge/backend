@@ -53,13 +53,13 @@ EOF"
 
     # Docker Compose로 서비스 배포
     echo "  Pulling latest images..."
-    ssh $SSH_OPTS "$EC2_USER@$IP" "cd ~/app && docker-compose -f docker-compose.yaml -f docker-compose.prod.yml pull"
+    ssh $SSH_OPTS "$EC2_USER@$IP" "cd ~/app && docker compose -f docker-compose.yaml -f docker-compose.prod.yml pull"
 
     echo "  Stopping existing containers..."
-    ssh $SSH_OPTS "$EC2_USER@$IP" "cd ~/app && docker-compose -f docker-compose.yaml -f docker-compose.prod.yml down --remove-orphans"
+    ssh $SSH_OPTS "$EC2_USER@$IP" "cd ~/app && docker compose -f docker-compose.yaml -f docker-compose.prod.yml down --remove-orphans"
 
     echo "  Starting containers..."
-    ssh $SSH_OPTS "$EC2_USER@$IP" "cd ~/app && docker-compose -f docker-compose.yaml -f docker-compose.prod.yml up -d"
+    ssh $SSH_OPTS "$EC2_USER@$IP" "cd ~/app && docker compose -f docker-compose.yaml -f docker-compose.prod.yml up -d"
 
     # 정리
     echo "  Cleaning up old images..."

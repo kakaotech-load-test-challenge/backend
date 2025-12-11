@@ -1,0 +1,29 @@
+name: Cleanup Old Images
+
+on:
+  schedule:
+    # 매일 새벽 3시에 실행 (KST 기준)
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    name: Delete old container images
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Delete old backend images
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: 'backend'
+          package-type: 'container'
+          min-versions-to-keep: 10
+          delete-only-untagged-versions: 'false'
+
+      - name: Delete old frontend images
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: 'frontend'
+          package-type: 'container'
+          min-versions-to-keep: 10
+          delete-only-untagged-versions: 'false'
