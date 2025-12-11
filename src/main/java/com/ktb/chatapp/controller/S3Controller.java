@@ -13,8 +13,11 @@ public class S3Controller {
     private final S3Service s3Service;
 
     @GetMapping("/presign")
-    public ResponseEntity<String> getPresignUrl(@RequestParam String fileName) {
-        String url = s3Service.generatePresignedUrl(fileName);
+    public ResponseEntity<String> getPresignUrl(
+            @RequestParam String fileName,
+            @RequestParam(required = false, defaultValue = "image/jpeg") String contentType
+    ) {
+        String url = s3Service.generatePresignedUrl(fileName, contentType);
         return ResponseEntity.ok(url);
     }
 }
