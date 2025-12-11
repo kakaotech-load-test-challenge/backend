@@ -1,11 +1,13 @@
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/ChatAppApplication.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/annotation/RateLimit.java
+/Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/config/AsyncConfig.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/config/BannedWordConfig.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/config/JwtConfig.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/config/MongoConfig.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/config/OpenApiConfig.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/config/RateLimitInterceptor.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/config/RequestLoggingFilter.java
+/Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/config/S3PresignerConfig.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/config/SecurityConfig.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/config/SocketIOConfig.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/config/WebMvcConfig.java
@@ -16,6 +18,7 @@
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/controller/HealthController.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/controller/MessageController.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/controller/RoomController.java
+/Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/controller/S3Controller.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/controller/StatusResponse.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/controller/UserApiResponse.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/controller/UserController.java
@@ -42,6 +45,7 @@
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/dto/MessagesReadResponse.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/dto/PageMetadata.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/dto/PageRequest.java
+/Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/dto/PresignedUrlResponse.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/dto/ProfileImageResponse.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/dto/RegisterRequest.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/dto/RoomResponse.java
@@ -49,6 +53,7 @@
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/dto/StandardResponse.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/dto/TokenRefreshResponse.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/dto/TokenVerifyResponse.java
+/Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/dto/UpdateProfileImageRequest.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/dto/UpdateProfileRequest.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/dto/UserResponse.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/dto/ValidationError.java
@@ -78,14 +83,14 @@
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/repository/UserRepository.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/security/CustomBearerTokenResolver.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/security/SessionAwareJwtAuthenticationConverter.java
-/Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/service/FileService.java
-/Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/service/FileUploadResult.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/service/JwtService.java
-/Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/service/LocalFileService.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/service/MessageReadStatusService.java
+/Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/service/MessageService.java
+/Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/service/PresignedUrlService.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/service/RateLimitCheckResult.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/service/RateLimitService.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/service/RoomService.java
+/Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/service/S3Service.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/service/SessionCreationResult.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/service/SessionData.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/service/SessionMetadata.java
@@ -99,7 +104,6 @@
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/service/session/SessionStore.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/util/BannedWordChecker.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/util/EncryptionUtil.java
-/Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/util/FileUtil.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/validation/EmailValidator.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/validation/NameValidator.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/validation/PasswordValidator.java
@@ -119,6 +123,7 @@
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/websocket/socketio/ai/ChunkData.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/websocket/socketio/handler/ChatMessageHandler.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/websocket/socketio/handler/ConnectionLoginHandler.java
+/Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/websocket/socketio/handler/DisconnectHandler.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/websocket/socketio/handler/MessageFetchHandler.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/websocket/socketio/handler/MessageLoader.java
 /Users/sumin/ktb-BootcampChat/apps/backend/src/main/java/com/ktb/chatapp/websocket/socketio/handler/MessageReactionHandler.java
