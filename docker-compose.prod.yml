@@ -1,74 +1,60 @@
-# Production override for docker-compose.yaml
+# Production WAS Instance Docker Compose
+# For deploying on EC2 WAS instances
 version: '3.8'
 
 services:
-  # Backend application
-  backend:
-    image: ${BACKEND_IMAGE}
-    container_name: backend-ktb
+  app:
+    # 수정됨: DOCKER_USERNAME도 환경변수로 오버라이딩 가능하도록 변경
+    image: ${DOCKER_USERNAME:-sunghun12}/ktb-chat-backend:${IMAGE_TAG:-latest}
+    container_name: ktb-chat-backend
     restart: unless-stopped
+    # env_file은 제거됨 (아래 environment에 기본값으로 모두 포함됨)
     ports:
-      - "5001:5001"  # HTTP
-      - "5002:5002"  # Socket.IO
+      - "${PORT:-5001}:5001"
+      - "${WS_PORT:-5002}:5002"
     environment:
-      - SPRING_PROFILES_ACTIVE=prod
-      - SPRING_DATA_MONGODB_URI=mongodb://mongo:27017/bootcamp-chat
-      - SPRING_DATA_REDIS_HOST=redis
-      - SPRING_DATA_REDIS_PORT=6379
-      - SERVER_PORT=5001
-      - MANAGEMENT_SERVER_PORT=5002
-    depends_on:
-      - mongo
-      - redis
-    networks:
-      - app-network
+      # Database Configuration
+      # .env.prod의 값을 default로 적용
+      MONGO_URI: ${MONGO_URI:-mongodb://43.203.76.19:27017/bootcamp-chat}
+      REDIS_HOST: ${REDIS_HOST:-15.165.125.117}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+
+      # Application Ports
+      PORT: ${PORT:-5001}
+      WS_PORT: ${WS_PORT:-5002}
+
+      # Security
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-3f2a1b4c5d6e7f8090a1b2c3d4e5f67890123456789abcdef0123456789abcdef}
+      ENCRYPTION_SALT: ${ENCRYPTION_SALT:-1a2b3c4d5e6f7890abcdef1234567890}
+      JWT_SECRET: ${JWT_SECRET:-9f8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d}
+
+      # OpenAI (Optional)
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-your-openai-key-here}
+
+      # JVM Options
+      # .env.prod의 상세 설정을 default로 적용
+      JAVA_OPTS: ${JAVA_OPTS:--Xmx1024m -Xms512m -XX:+UseG1GC -XX:MaxGCPauseMillis=200}
+
+      # Spring Profile
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-production}
+
+      # Hostname for metrics
+      # .env.prod의 was-1을 default로 적용
+      HOSTNAME: ${HOSTNAME:-was-1}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5001/actuator/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
-
-  # Node exporter for Prometheus
-  node-exporter:
-    image: prom/node-exporter:v1.8.2
-    container_name: node-exporter-ktb
-    restart: unless-stopped
-    ports:
-      - "9100:9100"
-    command:
-      - '--path.procfs=/host/proc'
-      - '--path.sysfs=/host/sys'
-      - '--path.rootfs=/host'
-      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
-    volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/host:ro
     networks:
-      - app-network
-
-  # cAdvisor for container metrics
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.50.0
-    container_name: cadvisor-ktb
-    restart: unless-stopped
-    ports:
-      - "8080:8080"
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-      - /dev/disk/:/dev/disk:ro
-    privileged: true
-    devices:
-      - /dev/kmsg
-    networks:
-      - app-network
+      - ktb-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
-  app-network:
+  ktb-network:
     driver: bridge
-
-# Volumes are inherited from base docker-compose.yaml
