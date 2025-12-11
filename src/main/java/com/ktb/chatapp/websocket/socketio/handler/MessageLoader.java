@@ -56,8 +56,13 @@ public class MessageLoader {
         }
     }
 
+    /**
+     * before == null → 최신 메시지 페이지 요청 → null 반환
+     * null을 받으면 캐시 키를 first-page 로 고정하여 캐시 HIT 가능하게 함
+     */
     private LocalDateTime convertBefore(Long beforeMillis) {
-        if (beforeMillis == null) return LocalDateTime.now();
+        if (beforeMillis == null)
+            return null;  // 🚀 핵심: now() 반환하면 캐시가 절대 HIT 되지 않음
         return Instant.ofEpochMilli(beforeMillis)
                 .atZone(ZoneId.systemDefault())
                 .toLocalDateTime();
@@ -71,6 +76,7 @@ public class MessageLoader {
     ) {
         String cacheKey = buildCacheKey(roomId, before);
 
+        // 캐시 먼저 확인
         List<Message> cached = (List<Message>) redis.opsForValue().get(cacheKey);
 
         if (cached != null) {
@@ -81,18 +87,20 @@ public class MessageLoader {
                     .build();
         }
 
+        // MongoDB 조회 (캐시 MISS)
         Pageable pageable = PageRequest.of(0, limit, Sort.by("timestamp").descending());
 
         Page<Message> messagePage =
                 messageRepository.findByRoomIdAndIsDeletedAndTimestampBefore(
                         roomId,
                         false,
-                        before,
+                        before == null ? LocalDateTime.now() : before,
                         pageable
                 );
 
         List<Message> messages = messagePage.getContent();
 
+        // 캐시 저장
         redis.opsForValue().set(cacheKey, messages, Duration.ofSeconds(CACHE_SECONDS));
 
         asyncUpdateReadStatus(messages, userId);
@@ -103,11 +111,15 @@ public class MessageLoader {
                 .build();
     }
 
+    /**
+     * before == null → 항상 동일한 캐시 키(first-page)
+     */
     private String buildCacheKey(String roomId, LocalDateTime before) {
         if (before == null) {
-            return "cache:messages:room:" + roomId + ":latest";
+            return "cache:messages:room:" + roomId + ":first-page";
         }
-        return "cache:messages:room:" + roomId + ":before:" + before.toInstant(ZoneOffset.UTC).toEpochMilli();
+        long epoch = before.toInstant(ZoneOffset.UTC).toEpochMilli();
+        return "cache:messages:room:" + roomId + ":before:" + epoch;
     }
 
     @Async
