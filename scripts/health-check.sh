@@ -6,7 +6,7 @@ set -e
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}Running health checks${NC}"
@@ -19,10 +19,17 @@ if [ -z "$INSTANCE_IPS" ]; then
     exit 1
 fi
 
+if [ -z "$EC2_USER" ]; then
+    echo -e "${RED}Error: EC2_USER environment variable is not set${NC}"
+    exit 1
+fi
+
+# SSH 옵션 정의
+SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
 # 헬스체크 함수
 health_check() {
     local IP=$1
-    local HOST_ALIAS="ec2-${IP//./-}"
     local MAX_RETRIES=30
     local RETRY_INTERVAL=10
     local ALL_HEALTHY=true
@@ -31,7 +38,7 @@ health_check() {
 
     # Docker 컨테이너 상태 확인
     echo "  Checking container status..."
-    CONTAINER_STATUS=$(ssh "$HOST_ALIAS" "cd ~/app && docker-compose -f docker-compose.yaml -f docker-compose.prod.yml ps --format json" | jq -r '.[] | "\(.Service): \(.State)"')
+    CONTAINER_STATUS=$(ssh $SSH_OPTS "$EC2_USER@$IP" "cd ~/app && docker-compose -f docker-compose.yaml -f docker-compose.prod.yml ps --format json" | jq -r '.[] | "\(.Service): \(.State)"')
 
     if [ -n "$CONTAINER_STATUS" ]; then
         echo "$CONTAINER_STATUS" | while read -r line; do
@@ -48,7 +55,7 @@ health_check() {
     # Backend 헬스체크 (포트 5001 가정)
     echo "  Checking backend health..."
     for i in $(seq 1 $MAX_RETRIES); do
-        if ssh "$HOST_ALIAS" "curl -sf http://localhost:5001/actuator/health > /dev/null 2>&1"; then
+        if ssh $SSH_OPTS "$EC2_USER@$IP" "curl -sf http://localhost:5001/actuator/health > /dev/null 2>&1"; then
             echo -e "    ${GREEN}Backend is healthy${NC}"
             break
         else
@@ -72,7 +79,7 @@ health_check() {
     echo ""
 }
 
-# 순차 헬스체크 (실패 시 즉시 중단하려면)
+# 순차 헬스체크
 FAILED=0
 for IP in $INSTANCE_IPS; do
     if ! health_check "$IP"; then

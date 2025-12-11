@@ -100,19 +100,11 @@ jobs:
           echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-          # SSH 설정
-          cat >> ~/.ssh/config <<EOF
-          Host ec2-*
-            StrictHostKeyChecking no
-            UserKnownHostsFile=/dev/null
-            IdentityFile ~/.ssh/deploy_key
-            User ${{ secrets.EC2_USER }}
-          EOF
-
       - name: Deploy to EC2 instances
         env:
           INSTANCE_IPS: ${{ steps.get-instances.outputs.INSTANCE_IPS }}
           BACKEND_IMAGE: ghcr.io/${{ github.repository }}/backend:${{ github.ref_name }}-${{ github.sha }}
+          EC2_USER: ${{ secrets.EC2_USER }}
         run: |
           chmod +x ./scripts/deploy.sh
           ./scripts/deploy.sh
@@ -120,6 +112,7 @@ jobs:
       - name: Health check
         env:
           INSTANCE_IPS: ${{ steps.get-instances.outputs.INSTANCE_IPS }}
+          EC2_USER: ${{ secrets.EC2_USER }}
         run: |
           chmod +x ./scripts/health-check.sh
           ./scripts/health-check.sh
