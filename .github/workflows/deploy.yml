@@ -75,17 +75,17 @@ jobs:
         id: get-instances
         run: |
           # EC2 인스턴스를 태그로 필터링하여 IP 목록 가져오기
-          # 태그 형식: Role=backend, Version=v2
+          # 태그 형식: Role=backend, version=v2
           INSTANCE_IPS=$(aws ec2 describe-instances \
             --filters \
               "Name=tag:Role,Values=backend" \
-              "Name=tag:Version,Values=v2" \
-              "Name=instance-state-name,Values=running" \
+              "Name=tag:version,version=v2" \
+              "Name=instance-state-name,version=running" \
             --query 'Reservations[*].Instances[*].PrivateIpAddress' \
             --output text)
 
           if [ -z "$INSTANCE_IPS" ]; then
-            echo "No EC2 instances found with Role=backend and Version=v2"
+            echo "No EC2 instances found with Role=backend and version=v2"
             exit 1
           fi
 
