@@ -7,10 +7,6 @@ import com.ktb.chatapp.dto.ChatMessageRequest;
 import com.ktb.chatapp.dto.MessageContent;
 import com.ktb.chatapp.dto.MessageResponse;
 import com.ktb.chatapp.model.Message;
-import com.ktb.chatapp.model.Room;
-import com.ktb.chatapp.model.User;
-import com.ktb.chatapp.repository.RoomRepository;
-import com.ktb.chatapp.repository.UserRepository;
 import com.ktb.chatapp.service.*;
 import com.ktb.chatapp.util.BannedWordChecker;
 import com.ktb.chatapp.websocket.socketio.SocketUser;
@@ -36,8 +32,6 @@ import static com.ktb.chatapp.websocket.socketio.SocketIOEvents.*;
 public class ChatMessageHandler {
 
     private final SocketIOServer socketIOServer;
-    private final RoomRepository roomRepository;
-    private final UserRepository userRepository;
 
     private final AiService aiService;
     private final SessionService sessionService;
@@ -61,8 +55,6 @@ public class ChatMessageHandler {
             MessageService messageService,
             BannedWordChecker bannedWordChecker,
             SocketIOServer socketIOServer,
-            RoomRepository roomRepository,
-            UserRepository userRepository,
             MeterRegistry registry
     ) {
         this.sessionService = sessionService;
@@ -71,9 +63,6 @@ public class ChatMessageHandler {
         this.messageService = messageService;
         this.bannedWordChecker = bannedWordChecker;
         this.socketIOServer = socketIOServer;
-        this.roomRepository = roomRepository;
-        this.userRepository = userRepository;
-
         this.registry = registry;
 
         this.successCounter = registry.counter("socketio.messages.success");
@@ -96,19 +85,13 @@ public class ChatMessageHandler {
 
             if (!checkRateLimit(socketUser, client)) return;
 
-            User sender = userRepository.findById(userId).orElse(null);
-            if (sender == null) {
-                sendError(client, "MESSAGE_ERROR", "사용자를 찾을 수 없습니다.");
-                errorCounter.increment();
-                return;
-            }
+            // senderSnapshot WITHOUT DB READ
+            Map<String, Object> senderSnapshot = Map.of(
+                    "id", userId,
+                    "name", socketUser.name() // SocketUser record에 name 존재
+            );
 
-            Room room = validateRoomAccess(data.getRoom(), userId, client);
-            if (room == null) {
-                errorCounter.increment();
-                return;
-            }
-
+            // 금칙어 검사
             MessageContent content = data.getParsedContent();
             if (bannedWordChecker.containsBannedWord(content.getTrimmedContent())) {
                 sendError(client, "MESSAGE_REJECTED", "금칙어가 포함된 메시지는 전송할 수 없습니다.");
@@ -116,16 +99,19 @@ public class ChatMessageHandler {
                 return;
             }
 
+            // SAVE MESSAGE WITHOUT Mongo READ
             Message saved = messageService.saveMessage(
                     data.getMessageType(),
                     data.getRoom(),
                     userId,
                     content,
-                    data.getFileData()
+                    data.getFileData(),
+                    senderSnapshot
             );
 
             if (saved == null) return;
 
+            // toResponse도 ZERO Mongo READ
             MessageResponse response = messageService.toResponse(saved);
 
             socketIOServer.getRoomOperations(data.getRoom())
@@ -187,17 +173,6 @@ public class ChatMessageHandler {
         return true;
     }
 
-    private Room validateRoomAccess(String roomId, String userId, SocketIOClient client) {
-        Room room = roomRepository.findById(roomId).orElse(null);
-
-        if (room == null || !room.getParticipantIds().contains(userId)) {
-            sendError(client, "MESSAGE_ERROR", "채팅방 접근 권한이 없습니다.");
-            return null;
-        }
-        return room;
-    }
-
-    // 전용 스레드풀에서 실행
     @Async("chatTaskExecutor")
     public void asyncHandleAIMentions(String roomId, String userId, MessageContent content) {
         aiService.handleAIMentions(roomId, userId, content);

@@ -5,6 +5,7 @@ import com.ktb.chatapp.model.File;
 import lombok.*;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @Data
 @Builder
@@ -27,7 +28,9 @@ public class FileResponse {
 
     private LocalDateTime uploadDate;
 
-    // File 엔티티 → FileResponse 변환
+    /**
+     * File 엔티티 → FileResponse 변환
+     */
     public static FileResponse from(File file) {
         return FileResponse.builder()
                 .id(file.getId())
@@ -37,6 +40,19 @@ public class FileResponse {
                 .size(file.getSize())
                 .userId(file.getUserId())
                 .uploadDate(file.getUploadDate())
+                .build();
+    }
+
+    public static FileResponse fromMetadata(Map<String, Object> metadata) {
+        if (metadata == null) return null;
+
+        return FileResponse.builder()
+                .url((String) metadata.get("fileUrl"))
+                .originalName((String) metadata.get("originalName"))
+                .mimeType((String) metadata.get("fileType"))
+                .size(metadata.get("fileSize") instanceof Number
+                        ? ((Number) metadata.get("fileSize")).longValue()
+                        : 0L)
                 .build();
     }
 }
