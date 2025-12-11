@@ -1,0 +1,16 @@
+/Users/sumin/ktb-BootcampChat/apps/backend/src/test/java/com/ktb/chatapp/config/MongoTestContainer.java
+/Users/sumin/ktb-BootcampChat/apps/backend/src/test/java/com/ktb/chatapp/config/RedisTestContainer.java
+/Users/sumin/ktb-BootcampChat/apps/backend/src/test/java/com/ktb/chatapp/config/SocketIOConfigTest.java
+/Users/sumin/ktb-BootcampChat/apps/backend/src/test/java/com/ktb/chatapp/controller/AuthControllerTest.java
+/Users/sumin/ktb-BootcampChat/apps/backend/src/test/java/com/ktb/chatapp/dto/MessageContentTest.java
+/Users/sumin/ktb-BootcampChat/apps/backend/src/test/java/com/ktb/chatapp/security/SessionAwareJwtAuthenticationConverterTest.java
+/Users/sumin/ktb-BootcampChat/apps/backend/src/test/java/com/ktb/chatapp/service/JwtServiceTest.java
+/Users/sumin/ktb-BootcampChat/apps/backend/src/test/java/com/ktb/chatapp/service/RateLimitServiceTest.java
+/Users/sumin/ktb-BootcampChat/apps/backend/src/test/java/com/ktb/chatapp/service/SessionServiceTest.java
+/Users/sumin/ktb-BootcampChat/apps/backend/src/test/java/com/ktb/chatapp/util/BannedWordCheckerTest.java
+/Users/sumin/ktb-BootcampChat/apps/backend/src/test/java/com/ktb/chatapp/util/EncryptionUtilTest.java
+/Users/sumin/ktb-BootcampChat/apps/backend/src/test/java/com/ktb/chatapp/websocket/socketio/ai/AiServiceIntegrationTest.java
+/Users/sumin/ktb-BootcampChat/apps/backend/src/test/java/com/ktb/chatapp/websocket/socketio/ai/ChunkDataTest.java
+/Users/sumin/ktb-BootcampChat/apps/backend/src/test/java/com/ktb/chatapp/websocket/socketio/handler/ChatMessageHandlerTest.java
+/Users/sumin/ktb-BootcampChat/apps/backend/src/test/java/com/ktb/chatapp/websocket/socketio/handler/MessageLoaderIntegrationTest.java
+/Users/sumin/ktb-BootcampChat/apps/backend/src/test/java/com/ktb/chatapp/websocket/socketio/handler/MessageLoaderTest.java
