@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - cicd
   workflow_dispatch:
 
 env:
@@ -79,8 +80,8 @@ jobs:
           INSTANCE_IPS=$(aws ec2 describe-instances \
             --filters \
               "Name=tag:Role,Values=backend" \
-              "Name=tag:version,version=v2" \
-              "Name=instance-state-name,version=running" \
+              "Name=tag:version,Values=v2" \
+              "Name=instance-state-name,Values=running" \
             --query 'Reservations[*].Instances[*].PrivateIpAddress' \
             --output text)
 
