@@ -12,11 +12,10 @@ env:
 
 jobs:
   build-and-push:
-    name: Build and Push Docker Images
+    name: Build and Push Docker Image
     runs-on: ubuntu-latest
     outputs:
       backend_tag: ${{ steps.meta-backend.outputs.tags }}
-      frontend_tag: ${{ steps.meta-frontend.outputs.tags }}
 
     steps:
       - name: Checkout code
@@ -45,31 +44,10 @@ jobs:
       - name: Build and push backend image
         uses: docker/build-push-action@v5
         with:
-          context: ./apps/backend
+          context: .
           push: true
           tags: ${{ steps.meta-backend.outputs.tags }}
           labels: ${{ steps.meta-backend.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          platforms: linux/amd64
-
-      - name: Extract metadata for frontend
-        id: meta-frontend
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}/frontend
-          tags: |
-            type=ref,event=branch
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Build and push frontend image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./apps/frontend
-          push: true
-          tags: ${{ steps.meta-frontend.outputs.tags }}
-          labels: ${{ steps.meta-frontend.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
@@ -131,7 +109,6 @@ jobs:
         env:
           INSTANCE_IPS: ${{ steps.get-instances.outputs.INSTANCE_IPS }}
           BACKEND_IMAGE: ghcr.io/${{ github.repository }}/backend:${{ github.ref_name }}-${{ github.sha }}
-          FRONTEND_IMAGE: ghcr.io/${{ github.repository }}/frontend:${{ github.ref_name }}-${{ github.sha }}
         run: |
           chmod +x ./scripts/deploy.sh
           ./scripts/deploy.sh
@@ -148,5 +125,4 @@ jobs:
           echo "### Deployment Summary :rocket:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Backend Image**: ghcr.io/${{ github.repository }}/backend:${{ github.ref_name }}-${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Frontend Image**: ghcr.io/${{ github.repository }}/frontend:${{ github.ref_name }}-${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Deployed Instances**: ${{ steps.get-instances.outputs.INSTANCE_IPS }}" >> $GITHUB_STEP_SUMMARY
