@@ -1,23 +1,20 @@
-지name: Deploy to EC2
+name: Deploy to EC2 with Docker Hub
 
 on:
   push:
     branches:
       - main
+      - cicd
   workflow_dispatch:
 
 env:
-  DOCKER_BUILDKIT: 1
-  COMPOSE_DOCKER_CLI_BUILD: 1
+  # Docker Hub 리포지토리 이름 (형식: username/repo)
+  DOCKER_IMAGE_NAME: sunghun12/ktb-chat-backend
 
 jobs:
   build-and-push:
-    name: Build and Push Docker Images
+    name: Build and Push Docker Image
     runs-on: ubuntu-latest
-    outputs:
-      backend_tag: ${{ steps.meta-backend.outputs.tags }}
-      frontend_tag: ${{ steps.meta-frontend.outputs.tags }}
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -25,54 +22,24 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GitHub Container Registry
+      - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.DOCKER_USERNAME }} # Docker Hub ID
+          password: ${{ secrets.DOCKER_PASSWORD }} # Docker Hub Access Token (or PW)
 
-      - name: Extract metadata for backend
-        id: meta-backend
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}/backend
-          tags: |
-            type=ref,event=branch
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Build and push backend image
+      - name: Build and push
         uses: docker/build-push-action@v5
         with:
-          context: ./apps/backend
+          context: .
           push: true
-          tags: ${{ steps.meta-backend.outputs.tags }}
-          labels: ${{ steps.meta-backend.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          platforms: linux/amd64
-
-      - name: Extract metadata for frontend
-        id: meta-frontend
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}/frontend
+          # 태그: Commit SHA(고유값)와 latest(편의용) 두 개를 동시에 푸시
           tags: |
-            type=ref,event=branch
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Build and push frontend image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./apps/frontend
-          push: true
-          tags: ${{ steps.meta-frontend.outputs.tags }}
-          labels: ${{ steps.meta-frontend.outputs.labels }}
+            ${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.DOCKER_IMAGE_NAME }}:latest
+          platforms: linux/amd64
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64
 
   deploy:
     name: Deploy to EC2 Instances
@@ -90,27 +57,24 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Get EC2 instance IPs by tags
+      - name: Get EC2 instance IPs
         id: get-instances
         run: |
-          # EC2 인스턴스를 태그로 필터링하여 IP 목록 가져오기
-          # 태그 형식: Role=backend, Version=v2
           INSTANCE_IPS=$(aws ec2 describe-instances \
             --filters \
               "Name=tag:Role,Values=backend" \
-              "Name=tag:Version,Values=v2" \
+              "Name=tag:version,Values=v2" \
               "Name=instance-state-name,Values=running" \
-            --query 'Reservations[*].Instances[*].PrivateIpAddress' \
-            --output text)
+            --query 'Reservations[*].Instances[*].PublicIpAddress' \
+            --output json | jq -r '.[] | .[]' | tr '\n' ' ')
 
           if [ -z "$INSTANCE_IPS" ]; then
-            echo "No EC2 instances found with Role=backend and Version=v2"
+            echo "No EC2 instances found."
             exit 1
           fi
 
-          # IP 목록을 공백으로 구분된 문자열로 변환
           echo "INSTANCE_IPS=$INSTANCE_IPS" >> $GITHUB_OUTPUT
-          echo "Found instances: $INSTANCE_IPS"
+          echo "Found IPs: $INSTANCE_IPS"
 
       - name: Setup SSH key
         run: |
@@ -118,35 +82,11 @@ jobs:
           echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-          # SSH 설정
-          cat >> ~/.ssh/config <<EOF
-          Host ec2-*
-            StrictHostKeyChecking no
-            UserKnownHostsFile=/dev/null
-            IdentityFile ~/.ssh/deploy_key
-            User ${{ secrets.EC2_USER }}
-          EOF
-
-      - name: Deploy to EC2 instances
+      - name: Deploy
         env:
           INSTANCE_IPS: ${{ steps.get-instances.outputs.INSTANCE_IPS }}
-          BACKEND_IMAGE: ghcr.io/${{ github.repository }}/backend:${{ github.ref_name }}-${{ github.sha }}
-          FRONTEND_IMAGE: ghcr.io/${{ github.repository }}/frontend:${{ github.ref_name }}-${{ github.sha }}
+          EC2_USER: ${{ secrets.EC2_USER }} # e.g., ubuntu
+          IMAGE_TAG: ${{ github.sha }}      # 방금 빌드한 태그
         run: |
           chmod +x ./scripts/deploy.sh
           ./scripts/deploy.sh
-
-      - name: Health check
-        env:
-          INSTANCE_IPS: ${{ steps.get-instances.outputs.INSTANCE_IPS }}
-        run: |
-          chmod +x ./scripts/health-check.sh
-          ./scripts/health-check.sh
-
-      - name: Deployment summary
-        run: |
-          echo "### Deployment Summary :rocket:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Backend Image**: ghcr.io/${{ github.repository }}/backend:${{ github.ref_name }}-${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Frontend Image**: ghcr.io/${{ github.repository }}/frontend:${{ github.ref_name }}-${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Deployed Instances**: ${{ steps.get-instances.outputs.INSTANCE_IPS }}" >> $GITHUB_STEP_SUMMARY
