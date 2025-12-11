@@ -30,19 +30,18 @@ import java.util.*;
         ),
 
         // 메시지 조회(room + timestamp DESC) 인덱스
-        // 방 입장 시 최근 메시지 50개 불러오는 쿼리가 반드시 이 인덱스를 사용함
         @CompoundIndex(
                 name = "room_timestamp_idx",
                 def = "{'room': 1, 'timestamp': -1}"
         ),
 
-        // 삭제된 메시지 필터링 시 최적화
+        // 삭제된 메시지 필터링 최적화
         @CompoundIndex(
                 name = "room_isDeleted_timestamp_idx",
                 def = "{'room': 1, 'isDeleted': 1, 'timestamp': -1}"
         ),
 
-        // 특정 유저 메시지 조회 (관리자 기능·검색 기능에서 유용)
+        // 특정 유저 메시지 조회 최적화
         @CompoundIndex(
                 name = "sender_timestamp_idx",
                 def = "{'sender': 1, 'timestamp': -1}"
@@ -53,7 +52,7 @@ public class Message {
     @Id
     private String id;
 
-    // roomId → 실제 MongoDB 필드는 "room"
+    // roomId → MongoDB 필드는 "room"
     @Indexed
     @Field("room")
     private String roomId;
@@ -61,14 +60,11 @@ public class Message {
     @Size(max = 10000, message = "메시지는 10000자를 초과할 수 없습니다.")
     private String content;
 
-    @Indexed  // 유저 메시지 조회 속도 향상
+    @Indexed  // sender-based 조회 속도 향상
     @Field("sender")
     private String senderId;
 
     private MessageType type;
-
-    @Field("file")
-    private String fileId;  // File 문서의 id
 
     private AiType aiType;
 
@@ -89,7 +85,6 @@ public class Message {
     @Builder.Default
     private Map<String, Object> metadata = new HashMap<>();
 
-    // 단일 인덱스 제거 (복합 인덱스에서 대체됨)
     @Builder.Default
     private Boolean isDeleted = false;
 
@@ -118,20 +113,6 @@ public class Message {
             return true;
         }
         return false;
-    }
-
-    /**
-     * 파일 메타데이터 저장 (S3 프리사인 기반)
-     */
-    public void attachFileMetadata(File file) {
-        if (this.fileId != null && this.metadata == null) {
-            this.metadata = new HashMap<>();
-
-            this.metadata.put("fileType", file.getMimeType());
-            this.metadata.put("fileSize", file.getSize());
-            this.metadata.put("originalName", file.getOriginalName());
-            this.metadata.put("fileUrl", file.getUrl());
-        }
     }
 
     @Data
