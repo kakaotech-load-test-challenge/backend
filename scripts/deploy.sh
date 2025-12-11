@@ -37,7 +37,6 @@ deploy_to_instance() {
     # 환경 변수 파일 생성
     ssh "$HOST_ALIAS" "cat > ~/app/.env <<EOF
 BACKEND_IMAGE=$BACKEND_IMAGE
-FRONTEND_IMAGE=$FRONTEND_IMAGE
 EOF"
 
     # Docker Compose로 서비스 배포
@@ -61,7 +60,7 @@ EOF"
 # 병렬 배포 (최대 5개 동시)
 PARALLEL_JOBS=5
 export -f deploy_to_instance
-export BACKEND_IMAGE FRONTEND_IMAGE
+export BACKEND_IMAGE
 export RED GREEN YELLOW NC
 
 echo "$INSTANCE_IPS" | xargs -n 1 -P $PARALLEL_JOBS -I {} bash -c 'deploy_to_instance "$@"' _ {}

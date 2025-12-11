@@ -62,23 +62,6 @@ health_check() {
         fi
     done
 
-    # Frontend 헬스체크 (포트 3000 가정)
-    echo "  Checking frontend health..."
-    for i in $(seq 1 $MAX_RETRIES); do
-        if ssh "$HOST_ALIAS" "curl -sf http://localhost:3000 > /dev/null 2>&1"; then
-            echo -e "    ${GREEN}Frontend is healthy${NC}"
-            break
-        else
-            if [ $i -eq $MAX_RETRIES ]; then
-                echo -e "    ${RED}Frontend health check failed after $MAX_RETRIES retries${NC}"
-                ALL_HEALTHY=false
-            else
-                echo "    Waiting for frontend... (attempt $i/$MAX_RETRIES)"
-                sleep $RETRY_INTERVAL
-            fi
-        fi
-    done
-
     if [ "$ALL_HEALTHY" = true ]; then
         echo -e "${GREEN}  All health checks passed for $IP${NC}"
     else
