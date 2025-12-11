@@ -2,10 +2,7 @@ package com.ktb.chatapp.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.ktb.chatapp.model.File;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 import java.time.LocalDateTime;
 
@@ -14,24 +11,31 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class FileResponse {
+
     @JsonProperty("_id")
     private String id;
-    private String filename;
-    private String originalname;
-    private String mimetype;
+
+    private String url;
+
+    private String originalName;
+
+    private String mimeType;
+
     private long size;
-    private String user;
+
+    private String userId;
+
     private LocalDateTime uploadDate;
 
-    // File 엔티티에서 FileResponse로 변환하는 정적 메서드
+    // File 엔티티 → FileResponse 변환
     public static FileResponse from(File file) {
         return FileResponse.builder()
                 .id(file.getId())
-                .filename(file.getFilename())
-                .originalname(file.getOriginalname())
-                .mimetype(file.getMimetype())
+                .url(file.getUrl())
+                .originalName(file.getOriginalName())
+                .mimeType(file.getMimeType())
                 .size(file.getSize())
-                .user(file.getUser())
+                .userId(file.getUserId())
                 .uploadDate(file.getUploadDate())
                 .build();
     }

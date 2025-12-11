@@ -1,8 +1,8 @@
 package com.ktb.chatapp.service;
 
+import com.ktb.chatapp.dto.FileResponse;
 import com.ktb.chatapp.dto.MessageContent;
 import com.ktb.chatapp.dto.MessageResponse;
-import com.ktb.chatapp.dto.FileResponse;
 import com.ktb.chatapp.model.File;
 import com.ktb.chatapp.model.Message;
 import com.ktb.chatapp.model.MessageType;
@@ -16,7 +16,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.HashMap;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -29,9 +30,8 @@ public class MessageService {
     private final MessageResponseMapper messageResponseMapper;
 
     public Message saveTextMessage(String roomId, String userId, MessageContent messageContent) {
-        if (messageContent == null || messageContent.isEmpty()) {
-            return null;
-        }
+
+        if (messageContent == null || messageContent.isEmpty()) return null;
 
         Message message = new Message();
         message.setRoomId(roomId);
@@ -45,8 +45,12 @@ public class MessageService {
         return messageRepository.save(message);
     }
 
-    public Message saveFileMessage(String roomId, String userId, MessageContent content, Map<String, Object> fileData) {
-
+    public Message saveFileMessage(
+            String roomId,
+            String userId,
+            MessageContent content,
+            Map<String, Object> fileData
+    ) {
         if (fileData == null || fileData.get("_id") == null) {
             throw new IllegalArgumentException("파일 데이터가 올바르지 않습니다.");
         }
@@ -54,7 +58,8 @@ public class MessageService {
         String fileId = (String) fileData.get("_id");
         File file = fileRepository.findById(fileId).orElse(null);
 
-        if (file == null || !file.getUser().equals(userId)) {
+        // 권한 확인
+        if (file == null || !file.getUserId().equals(userId)) {
             throw new IllegalStateException("파일을 찾을 수 없거나 접근 권한이 없습니다.");
         }
 
@@ -67,26 +72,29 @@ public class MessageService {
         message.setTimestamp(LocalDateTime.now());
         message.setMentions(content.aiMentions());
 
-        // 최소한의 메타데이터만 저장 (조회 최적화)
         Map<String, Object> metadata = new HashMap<>();
-        metadata.put("fileType", file.getMimetype());
+        metadata.put("fileType", file.getMimeType());
         metadata.put("fileSize", file.getSize());
-        metadata.put("originalName", file.getOriginalname());
+        metadata.put("originalName", file.getOriginalName());
+        metadata.put("fileUrl", file.getUrl());         // 프론트가 직접 렌더링 가능
         message.setMetadata(metadata);
 
         return messageRepository.save(message);
     }
 
     public MessageResponse toResponse(Message message) {
+
         if (message == null) return null;
 
         User sender = userRepository.findById(message.getSenderId()).orElse(null);
 
         MessageResponse response = messageResponseMapper.mapToMessageResponse(message, sender);
 
+        // 파일 응답 포함
         if (message.getFileId() != null) {
             fileRepository.findById(message.getFileId())
-                    .ifPresent(file -> response.setFile(FileResponse.from(file)));
+                    .map(FileResponse::from)
+                    .ifPresent(response::setFile);
         }
 
         return response;

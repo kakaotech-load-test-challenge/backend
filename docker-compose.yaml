@@ -10,7 +10,7 @@ services:
     volumes:
       - mongo_data:/data/db
 
-  redis:
+  99:
     image: redis:7.2
     container_name: redis-ktb
     restart: unless-stopped

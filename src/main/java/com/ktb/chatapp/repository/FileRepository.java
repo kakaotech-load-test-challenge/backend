@@ -4,9 +4,8 @@ import com.ktb.chatapp.model.File;
 import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.stereotype.Repository;
 
-import java.util.Optional;
-
 @Repository
 public interface FileRepository extends MongoRepository<File, String> {
-    Optional<File> findByFilename(String filename);
+    // 필요 시 사용자별 조회 기능 추가 가능
+    // List<File> findByUserId(String userId);
 }
