@@ -35,7 +35,7 @@ deploy_to_instance() {
 
     # 4. 배포 실행
     # --pull always: 이미지를 확실하게 새로 받음
-    ssh $SSH_OPTS "$EC2_USER@$IP" "cd ~/ktb && docker compose up -d --pull always"
+    ssh $SSH_OPTS "$EC2_USER@$IP" "cd ~/ktb && docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --pull always"
 
     # 5. 미사용 이미지 정리 (선택사항)
     ssh $SSH_OPTS "$EC2_USER@$IP" "docker image prune -f"
