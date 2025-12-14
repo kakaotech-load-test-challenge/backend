@@ -16,7 +16,8 @@ services:
       # Database Configuration
       # .env.prod의 값을 default로 적용
       MONGO_URI: ${MONGO_URI:-mongodb://43.203.76.19:27017/bootcamp-chat}
-      REDIS_HOST: ${REDIS_HOST:-15.165.125.117}
+      REDISA_HOST: ${REDISA_HOST:-10.0.101.47}
+      REDISB_HOST: ${REDISB_HOST:-10.0.101.120}
       REDIS_PORT: ${REDIS_PORT:-6379}
 
       # Application Ports
