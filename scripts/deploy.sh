@@ -26,7 +26,7 @@ deploy_to_instance() {
 
     # 2. docker-compose.yml 전송 (덮어쓰기)
     # 로컬에 있는 파일을 서버로 전송합니다.
-    scp $SSH_OPTS ./docker-compose.yml "$EC2_USER@$IP:~/ktb/docker-compose.yml"
+    scp $SSH_OPTS ./docker-compose.prod.yml "$EC2_USER@$IP:~/ktb/docker-compose.prod.yml"
 
     # 3. .env 파일 생성 (이미지 태그 지정)
     # docker-compose.yml이 ${IMAGE_TAG:-latest}를 읽는데,
