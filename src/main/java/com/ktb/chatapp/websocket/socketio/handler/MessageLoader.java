@@ -6,7 +6,6 @@ import com.ktb.chatapp.model.Message;
 import com.ktb.chatapp.repository.MessageRepository;
 import com.ktb.chatapp.service.MessageReadStatusService;
 import com.ktb.chatapp.service.MessageService;
-
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.*;
@@ -21,6 +20,9 @@ import java.util.concurrent.CompletableFuture;
 @Slf4j
 @Component
 public class MessageLoader {
+
+    private static final int PAGE_SIZE = 30;
+    private static final long CACHE_SECONDS = 30;
 
     private final MessageRepository messageRepository;
     private final MessageService messageService;
@@ -39,14 +41,10 @@ public class MessageLoader {
         this.redis = redis;
     }
 
-    private static final int PAGE_SIZE = 30;
-    private static final long CACHE_SECONDS = 30;
-
     public FetchMessagesResponse loadMessages(FetchMessagesRequest req, String userId) {
         try {
             LocalDateTime before = convertBefore(req.before());
             return loadMessagesInternal(req.roomId(), PAGE_SIZE, before, userId);
-
         } catch (Exception e) {
             log.error("Error loading messages for room {}", req.roomId(), e);
             return FetchMessagesResponse.builder()
@@ -56,13 +54,12 @@ public class MessageLoader {
         }
     }
 
-    /**
-     * before == null → 최신 메시지 페이지 요청 → null 반환
-     * null을 받으면 캐시 키를 first-page 로 고정하여 캐시 HIT 가능하게 함
-     */
+    //before == null → 최신 페이지
+    //before != null → 이전 메시지 페이지
     private LocalDateTime convertBefore(Long beforeMillis) {
-        if (beforeMillis == null)
-            return null;  // 🚀 핵심: now() 반환하면 캐시가 절대 HIT 되지 않음
+        if (beforeMillis == null) {
+            return null;
+        }
         return Instant.ofEpochMilli(beforeMillis)
                 .atZone(ZoneId.systemDefault())
                 .toLocalDateTime();
@@ -74,20 +71,27 @@ public class MessageLoader {
             LocalDateTime before,
             String userId
     ) {
-        String cacheKey = buildCacheKey(roomId, before);
+        String cacheKey = buildCacheKey(roomId);
 
-        // 캐시 먼저 확인
-        List<Message> cached = (List<Message>) redis.opsForValue().get(cacheKey);
+        // 캐시는 "first-page" 에서만 사용
+        if (before == null) {
+            List<Message> cached = null;
+            try {
+                cached = (List<Message>) redis.opsForValue().get(cacheKey);
+            } catch (Exception e) {
+                log.warn("Redis cache get failed, fallback to Mongo. key={}", cacheKey, e);
+            }
 
-        if (cached != null) {
-            asyncUpdateReadStatus(cached, userId);
-            return FetchMessagesResponse.builder()
-                    .messages(cached.stream().map(messageService::toResponse).toList())
-                    .hasMore(cached.size() == PAGE_SIZE)
-                    .build();
+            if (cached != null) {
+                asyncUpdateReadStatus(cached, userId);
+                return FetchMessagesResponse.builder()
+                        .messages(cached.stream().map(messageService::toResponse).toList())
+                        .hasMore(cached.size() == PAGE_SIZE)
+                        .build();
+            }
         }
 
-        // MongoDB 조회 (캐시 MISS)
+        // MongoDB 조회 (항상 정확한 소스)
         Pageable pageable = PageRequest.of(0, limit, Sort.by("timestamp").descending());
 
         Page<Message> messagePage =
@@ -100,8 +104,14 @@ public class MessageLoader {
 
         List<Message> messages = messagePage.getContent();
 
-        // 캐시 저장
-        redis.opsForValue().set(cacheKey, messages, Duration.ofSeconds(CACHE_SECONDS));
+        // 캐시 저장도 first-page만
+        if (before == null) {
+            try {
+                redis.opsForValue().set(cacheKey, messages, Duration.ofSeconds(CACHE_SECONDS));
+            } catch (Exception e) {
+                log.warn("Redis cache set failed, skip caching. key={}", cacheKey, e);
+            }
+        }
 
         asyncUpdateReadStatus(messages, userId);
 
@@ -111,15 +121,9 @@ public class MessageLoader {
                 .build();
     }
 
-    /**
-     * before == null → 항상 동일한 캐시 키(first-page)
-     */
-    private String buildCacheKey(String roomId, LocalDateTime before) {
-        if (before == null) {
-            return "cache:messages:room:" + roomId + ":first-page";
-        }
-        long epoch = before.toInstant(ZoneOffset.UTC).toEpochMilli();
-        return "cache:messages:room:" + roomId + ":before:" + epoch;
+    //first-page 전용 캐시 키
+    private String buildCacheKey(String roomId) {
+        return "cache:messages:room:" + roomId + ":first-page";
     }
 
     @Async
@@ -127,7 +131,6 @@ public class MessageLoader {
         try {
             List<String> ids = messages.stream().map(Message::getId).toList();
             messageReadStatusService.updateReadStatus(ids, userId);
-
         } catch (Exception e) {
             log.error("async updateReadStatus failed", e);
         }

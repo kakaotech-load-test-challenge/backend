@@ -101,7 +101,7 @@ public class RateLimitInterceptor implements HandlerInterceptor {
             RateLimitCheckResult result,
             int maxRequests,
             Duration window) throws IOException {
-        
+
         var errorCode = ApiErrorCode.TOO_MANY_REQUESTS;
         response.setStatus(errorCode.getHttpStatus().value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
