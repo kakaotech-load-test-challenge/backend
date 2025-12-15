@@ -35,10 +35,10 @@ public class SocketIOConfig {
     @Value("${socketio.server.port:5002}")
     private Integer port;
 
-    @Value("${spring.data.redis.host:localhost}")
+    @Value("${redis.websocket.host:localhost}")
     private String redisHost;
 
-    @Value("${spring.data.redis.port:6379}")
+    @Value("${redis.websocket.port:6379}")
     private Integer redisPort;
 
     @Bean(destroyMethod = "shutdown")
