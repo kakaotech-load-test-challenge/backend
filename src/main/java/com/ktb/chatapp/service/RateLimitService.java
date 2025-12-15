@@ -21,7 +21,7 @@ public class RateLimitService {
     private final RateLimitStore rateLimitStore;
     @Value("${HOSTNAME:''}")
     private String hostName;
-    
+
     @PostConstruct
     public void init() {
         if (!hostName.isEmpty()) {
@@ -29,7 +29,7 @@ public class RateLimitService {
         }
         hostName = generateHostname();
     }
-    
+
     private String generateHostname() {
         try {
             return getLocalHost().getHostName();
@@ -37,8 +37,8 @@ public class RateLimitService {
             return "unknown-" + java.util.UUID.randomUUID().toString().substring(0, 8);
         }
     }
-    
-    
+
+
     @Transactional
     public RateLimitCheckResult checkRateLimit(String _clientId, int maxRequests, Duration window) {
         String actualClientId = hostName + ":" + _clientId;
@@ -53,7 +53,7 @@ public class RateLimitService {
 
             if (rateLimit != null && currentCount >= maxRequests) {
                 long retryAfterSeconds = Math.max(1L,
-                    rateLimit.getExpiresAt().getEpochSecond() - nowEpochSeconds);
+                        rateLimit.getExpiresAt().getEpochSecond() - nowEpochSeconds);
                 long resetEpochSeconds = rateLimit.getExpiresAt().getEpochSecond();
                 return RateLimitCheckResult.rejected(
                         maxRequests, windowSeconds, resetEpochSeconds, retryAfterSeconds);
@@ -85,5 +85,5 @@ public class RateLimitService {
                     maxRequests, maxRequests, windowSeconds, resetEpochSeconds, windowSeconds);
         }
     }
-    
+
 }
